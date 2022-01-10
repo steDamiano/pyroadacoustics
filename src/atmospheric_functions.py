@@ -1,4 +1,5 @@
 import numpy as np
+
 def sound_attenuation_distance(d):
     ## Computes attenuation of sound at distance d from source:
     #   d: distance in m
@@ -6,9 +7,10 @@ def sound_attenuation_distance(d):
 
 def compute_air_impedance(T, p = 1, c = None):
     ## Computes air impedance given:
-    #   T: temperature in Kelvin
+    #   T: temperature in Celsius
     #   p: atmospheric pressure in atm
     #   c: speed of sound in air, at temperature T
+    T = T + 273.15
     if c == None:
         c = compute_speed_sound(T)
     p = p * 101325          # Convert atm to Pascal
@@ -17,17 +19,18 @@ def compute_air_impedance(T, p = 1, c = None):
 
 def compute_speed_sound(T):
     ## Computes speed of sound in air at temperature T:
-    #   T: temperature expressed in Kelvin
+    #   T: temperature expressed in Celsius
     import numpy as np
+    T = T + 273.15
     return 331.3 * np.sqrt(T / 273.15)
 
 def compute_air_absorption_coeffs(T, p_s, rel_humidity, F):
     ## Computes the air absorption coefficients alpha:
-    #   T: temperature in Kelvin
+    #   T: temperature in Celsius
     #   p_s: pressure in atm
     #   rel_humidity: relative humidity as a percentage
     #   F: frequencies to compute the coefficients for
-
+    T = T + 273.15
     T_0 = 293.15        # Absolute atmospheric temperature
     p_s0 = 1            # Atmospheric Pressure in atm
 
