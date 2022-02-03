@@ -43,8 +43,8 @@ class Source:
         # print('Initial delay in samples - direct: %f' %M_init)
         # print('Initial delay in samples - reflected: %f' %(M_init_refl / 2))
     
-    # def set_trajectory(points: np.array) -> None:
-    #     raise NotImplementedError("Only rectilinear tracjectories are supported for now")
+    def set_curved_trajectory(points: np.array) -> None:
+        raise NotImplementedError("Only rectilinear tracjectories are supported for now")
 
 ## TEST CODE
 a = Source()
