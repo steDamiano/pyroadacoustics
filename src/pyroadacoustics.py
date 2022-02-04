@@ -1,6 +1,8 @@
 from turtle import position
 import numpy as np
 import math
+import scipy.signal
+
 class Material:
     def __init__(
         self,
@@ -11,19 +13,28 @@ class Material:
 class Environment:
 
     def __init__(
-        self,
-        fs = 8000,
-        source = None,
-        noise_sources = None,
-        background_noise = None,
-        mic_array = None,
-        temperature = None,
-        pressure = None,
-        rel_humidity = None,
-        road_material = None
+            self,
+            fs = 8000,
+            source = None,
+            noise_sources = None,
+            background_noise = None,
+            mic_array = None,
+            temperature = None,
+            pressure = None,
+            rel_humidity = None,
+            road_material = None
         ) -> None:
         
-        pass
+        self.fs = fs
+        self.source = source
+        self.noise_sources = noise_sources
+        self.background_noise = background_noise
+        self.mic_array = mic_array
+        self.temperature = temperature
+        self.pressure = pressure
+        self.rel_humidity = rel_humidity
+        self.road_material = road_material
+        self.compute_air_absorption_coefficients = self._compute_air_absorption_coefficients()
     
     # Select a material from provided options in a dictionary.
     def choose_road_material():
@@ -61,8 +72,31 @@ class Environment:
 
     # Compute air absorption coefficients and store them in a np.array
     # Coeffs are computed based on temperature, pressure, relative humidity and are stored in dB scale
-    def compute_air_absorption_coefficients():
-        pass
+    def _compute_air_absorption_coefficients(self):
+        T0 = 293.15
+        T01 = 273.16
+        ps0 = 1
+        f = np.linspace(0, 11000, num=50)
+        Csat = -6.8346 * math.pow(T01 / self.temperature, 1.261) + 4.6151
+        rhosat = math.pow(10, Csat)
+        H = rhosat * self.rel_humidity * ps0 / self.pressure
+
+        frn = (self.pressure / ps0) * math.pow(T0 / self.temperature, 0.5) * (
+                9 + 280 * H * math.exp(-4.17 * (math.pow(T0 / self.temperature, 1/3.) - 1)))
+
+        fro = (self.pressure / ps0) * (24.0 + 4.04e4 * H * (0.02 + H) / (0.391 + H))
+
+        alpha = f * f * (
+            1.84e-11 / ( math.pow(T0 / self.temperature, 0.5) * self.pressure / ps0 )
+            + math.pow(self.temperature / T0, -2.5)
+            * (
+                0.10680 * math.exp(-3352 / self.temperature) * frn / (f * f + frn * frn)
+                + 0.01278 * math.exp(-2239.1 / self.temperature) * fro / (f * f + fro * fro)
+                )
+            )
+        
+        return alpha
+
 
     # Runs simulation. Returns array np.array([M,N]), where M is the number of microphones 
     # and N is the number of samples of the simulation. Array contains signals recorded by microphones
@@ -117,23 +151,40 @@ class SoundSource:
         return trajectory
 
 class SimulatorManager:
+    __instance = None
+    A = None
+    B = None
+
+    @staticmethod
+    def getInstance():
+        if SimulatorManager.__instance == None:
+            SimulatorManager()
+        return SimulatorManager.__instance
 
     def __init__(
-        self,
-        environment,
-        primaryDelLine,
-        secondaryDelLine,
-        airAbsorptionFilters,
-        asphaltReflectionfilter,
-
+            self,
+            environment,
+            primaryDelLine,
+            secondaryDelLine,
+            airAbsorptionFilters,
+            asphaltReflectionfilter,
         ) -> None:
-        pass
-    
+        if SimulatorManager.__instance != None:
+            raise Exception("SimulatorManager already instantiated")
+        else:
+            SimulatorManager.__instance = self
+        self.environment = environment
+        self.primaryDelLine = primaryDelLine
+        self.secondaryDelLine = secondaryDelLine
+        self.airAbsorptionFilters = airAbsorptionFilters
+        self.asphaltReflectionFilters = asphaltReflectionfilter
+
     # Compute initial delay and set it into the two delay lines. 
     # Compute air absorption filters and asphalt reflection filter and store the precomputed values in a table. 
     # Instantiate delay lines.
-    def initialize():
-        pass
+    def initialize(self):
+        self.primaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0,0]), fs = self.fs)
+        self.secondaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0]), fs = self.fs)
 
     # Compute new delays given acutal positions of src and microphone.
     # Update coefficients of filters with new positions.
@@ -143,7 +194,12 @@ class SimulatorManager:
     
     # Compute air absorption FIR filter with ntaps. Depends on distance and air absorption coefficients.
     def compute_air_absorption_filter(self, abs_coeffs, distance, numtaps):
-        pass
+        f = np.linspace(0, 11000, num=50)
+        norm_freqs = f / max(f)
+        alpha = 10 ** (-abs_coeffs * distance / 20)     # Convert coeffs in dB to linear scale
+        filt_coeffs = scipy.signal.firwin2(numtaps, norm_freqs, abs_coeffs)
+        
+        return filt_coeffs
 
     # Compute sound attenuation depending on distance between source and receiver. 
     # Propagation is assumed to be based on spherical waves.
@@ -268,19 +324,3 @@ class DelayLine:
     # Windowed Sinc Function
     def _frac_delay_sinc(self, sinc_samples, sinc_window, delay):
         return sinc_window * np.sinc(np.arange(0,sinc_samples) - (sinc_samples - 1) / 2 - delay)
-
-# Compute length of segment A,B
-a = np.array([0,0])
-b = np.array([3,4])
-direction = b - a
-direction = direction / np.linalg.norm(direction)
-len_segment = np.sqrt(np.sum((a-b)**2))
-t_segment = len_segment / 1.3
-samples_segment = round(t_segment * 11)
-segment_positions = len_segment / samples_segment * range(samples_segment)
-segment_positions = np.append(segment_positions, 5).reshape(-1,1)
-trajectory = np.tile(a,(len(segment_positions), 1)) + segment_positions * direction
-# print(segment_positions.dot(np.tile(direction, (np.shape(segment_positions)[0],1))))
-# for i in range(0, len(segment_positions)):
-print(trajectory)
-# print(segment_positions)
