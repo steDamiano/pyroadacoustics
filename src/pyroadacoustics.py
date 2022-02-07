@@ -102,7 +102,7 @@ class Environment:
         self.pressure = pressure
         self.rel_humidity = rel_humidity
         self.road_material = road_material
-        self.compute_air_absorption_coefficients = self._compute_air_absorption_coefficients()
+        self.air_absorption_coefficients = self._compute_air_absorption_coefficients()
     
     # Select a material from provided options in a dictionary, given input string absorption.
     # If material does not exist, create new material from input dictionary of absorption coeffs and
@@ -126,7 +126,7 @@ class Environment:
             simulation_duration = 5
             trajectory = np.tile(position, (simulation_duration * self.fs))
         if signal == None:
-            # Define a default signal --> white noise 
+            # Define a default signal --> sinusoidal siren
             simulation_duration = len(trajectory) / self.fs
             
             ## Define sinusoid with frequency modulation
@@ -150,13 +150,33 @@ class Environment:
 
     # Add background noise to the simulation with a given SNR. 
     # SNR is computed w.r.t the the signal received when the source is closest to the microphone
-    def add_background_noise(self, signal, SNR):
-        
+    def add_background_noise(self, signal, SNR):        
         if self.source == None:
             raise RuntimeError("To add a background noise you need to first insert a sound source")
         
+        if signal == None:
+            # Define default signal --> white noise
+            if self.source.trajectory == None:
+                simulation_duration = 5
+                self.source.trajectory = np.tile(self.source.position, (simulation_duration * self.fs, 1))
+            else:
+                simulation_duration = len(self.source.trajectory) / self.fs
+            
+            t = np.arange(0, simulation_duration, 1 / self.fs)
+            signal = np.random.randn(t)
 
-        pass
+        # Find closest position between source and first microphone (reference)
+        d_min = float('inf')
+
+        for i in range(len(self.source.trajectory)):
+            d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
+            if  d_temp < d_min:
+                d_min = d_temp
+        
+        # Compute SNR
+        noise_attenuation = np.sqrt(np.sum((self.source.signal ** 2) / (4 * np.pi * d_min)) / (10 ** (SNR/10) * np.sum((signal ** 2) / (4 * np.pi * d_min))))
+        signal = signal * noise_attenuation
+
 
     # Add microphone array in the environment. Array contains R microphones, specified by their position in x,y,z coordinates
     def add_microphone_array(self, mic_locs: np.array) -> None:
@@ -328,15 +348,18 @@ class SimulatorManager:
         y_primary = self.primaryDelLine.update_delay_line(1, np.array([tau, tau_1]))
         y_secondary = self.primaryDelLine.update_delay_line(1, np.array([tau_2]))
 
+        # Store the read samples in a circular array to be used for filtering with air abs and asphalt refl
+        # THIS HAS TO BE DEBUGGED IN NOTEBOOK TOO
+
         return y_primary, y_secondary
-        
+    
     
     # Compute air absorption FIR filter with ntaps. Depends on distance and air absorption coefficients.
     def compute_air_absorption_filter(self, abs_coeffs, distance, numtaps):
         f = np.linspace(0, 11000, num=50)
         norm_freqs = f / max(f)
         alpha = 10 ** (-abs_coeffs * distance / 20)     # Convert coeffs in dB to linear scale
-        filt_coeffs = scipy.signal.firwin2(numtaps, norm_freqs, abs_coeffs)
+        filt_coeffs = scipy.signal.firwin2(numtaps, norm_freqs, alpha)
         
         return filt_coeffs
 
@@ -371,7 +394,7 @@ class SimulatorManager:
         #   T: temperature in Kelvin
         #   p: atmospheric pressure in atm
         #   c: speed of sound in air, at temperature T
-        self.environment.pressure = self.environment.pressure * 101325          # Convert atm to Pascal
+        self.environment.pressure = self.environment.pressure * 101325 # Convert atm to Pascal
         R_spec = 287.058
         return self.environment.pressure / (R_spec * self.environment.temperature) * self.environment.c
 
