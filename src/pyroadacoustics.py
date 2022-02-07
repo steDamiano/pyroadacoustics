@@ -1,20 +1,87 @@
-from turtle import position
 import numpy as np
 import math
 import scipy.signal
+import json
+import matplotlib.pyplot as plt
+
+# Load materials as dictionary
+with open('src/materials.json') as database_materials:
+    materials_dict = json.load(database_materials)
+# print('Type: ', type(materials_dict))
+# print('\nMaterial1: ', materials_dict['m1_asphalt'])
 
 class Material:
+    """
+    Parameters
+    ----------
+    absorption_coefficients: str or dict
+        * str: The absorption values will be obtained from the database.
+        * dict: A dictionary containing keys ``description``, ``coeffs``, and
+            ``center_freqs``.
+    """
     def __init__(
-        self,
-        absorption_coefficients,
+            self,
+            absorption,
         ) -> None:
-        pass
+        
+        if isinstance(absorption, str):
+            absorption = dict(materials_dict[absorption])
+        
+        elif isinstance(absorption, dict):
+            if "coeffs" in absorption and "center_freqs" not in absorption:
+                raise KeyError("'absorption' must be a dictionary with keys 'coeffs' and 'center_freqs'")
+
+            if len(absorption["coeffs"]) != len(absorption["center_freqs"]):
+                raise KeyError("Length of 'absorption['coeffs']' and "
+                    "'absorption['center_freqs']' must match.")
+        else:
+            raise TypeError('Wrong Material Assignment')
+        
+        self.absorption = absorption
+        self.reflection_coeffs = np.sqrt(1 - self.absorption["coeffs"])
+    
+    def extrapolate_coeffs_to_spectrum(self, interp_degree = 2, fs = 8000, n_bands = 8):
+        coeffs = self.absorption["coeffs"]
+        freqs = self.absorption["center_freqs"]
+
+        # Comment to remove dummy point at 8kHz
+        freqs = np.append(freqs, 8000)
+        coeffs = np.append(self.absorption["coeffs"], 0.3)
+        
+        model_abs = np.polyfit(freqs, coeffs, interp_degree)
+        full_spectrum = np.linspace(0, 1, n_bands) * fs / 2
+        estimated_abs_coeffs = np.polyval(model_abs, full_spectrum)
+        
+        # Clip between 0 and 1
+        estimated_abs_coeffs[estimated_abs_coeffs < 0.0] = 0.0
+        estimated_abs_coeffs[estimated_abs_coeffs > 1.0] = 1.0
+
+        self.absorption = {
+            "description": "Interpolated Material",
+            "coeffs": estimated_abs_coeffs,
+            "center_freqs": full_spectrum
+        }
+        
+        # Compute reflection coefficients from absorption
+        self.reflection_coeffs = np.sqrt(1 - estimated_abs_coeffs)
+
+        return estimated_abs_coeffs
+
+    def plot_absorption_coeffs(self):
+        plt.figure()
+        plt.plot(self.absorption["center_freqs"], self.absorption["coeffs"])
+        plt.title('Absorption Coefficients Road Surface')
+        plt.ylabel(r'$\alpha')
+        plt.xlabel('f [Hz]')
+        plt.show()
+        
 
 class Environment:
 
     def __init__(
             self,
             fs = 8000,
+            c = 343,
             source = None,
             noise_sources = None,
             background_noise = None,
@@ -26,6 +93,7 @@ class Environment:
         ) -> None:
         
         self.fs = fs
+        self.c = c
         self.source = source
         self.noise_sources = noise_sources
         self.background_noise = background_noise
@@ -36,20 +104,43 @@ class Environment:
         self.road_material = road_material
         self.compute_air_absorption_coefficients = self._compute_air_absorption_coefficients()
     
-    # Select a material from provided options in a dictionary.
-    def choose_road_material():
-        pass
-
-    # Create a new road material from a set of center frequs and absorption coefficients.
-    # Extrapolate to cover full frequency spectrum.
-    def create_road_material(self, center_freqs, abs_coeffs):
-        pass
+    # Select a material from provided options in a dictionary, given input string absorption.
+    # If material does not exist, create new material from input dictionary of absorption coeffs and
+    # center frequencies absorption = {"coeffs": [], "center_freqs" = []}
+    def get_road_material(self, absorption):
+        material = Material(absorption)
+        
+        # If frequencies do not cover the whole spectrum, perform interpolation
+        if material.absorption["center_freqs"][-1] != self.fs / 2:
+            material.extrapolate_coeffs_to_spectrum(fs = self.fs)
+        
+        self.road_material = material
+        return material
     
     # Add sound source to envrionment in specified position P, with specified signal S and trajectory T
     # If no signal is specified, assign default one (####TBD####)
     # If no trajectory is specified, source is assumed to be static
-    def add_source(self, position, signal = None, trajectory = None) -> None:
-        pass
+    def add_source(self, position, signal = None, trajectory = None):
+        if trajectory == None:
+            # Define duration of the simulation
+            simulation_duration = 5
+            trajectory = np.tile(position, (simulation_duration * self.fs))
+        if signal == None:
+            # Define a default signal --> white noise 
+            simulation_duration = len(trajectory) / self.fs
+            
+            ## Define sinusoid with frequency modulation
+            f = 800
+            f_lfo = 0.3
+
+            t = np.arange(0, simulation_duration, 1/self.fs)
+            signal = np.zeros_like(t)
+            for i in range(len(t)):
+                signal[i] = 0.2 * np.sin(2 * np.pi * f * t[i] + 600 * np.sin(2 * np.pi * f_lfo * t[i]))
+
+        
+        source = SoundSource(position, position - np.array([0,0, 2 * position[2]]), signal, trajectory)
+        self.source = source
     
     # Add sound source to envrionment in specified position P, with specified signal S and trajectory T
     # If no signal is specified, assign default one (####TBD####)
@@ -60,11 +151,17 @@ class Environment:
     # Add background noise to the simulation with a given SNR. 
     # SNR is computed w.r.t the the signal received when the source is closest to the microphone
     def add_background_noise(self, signal, SNR):
+        
+        if self.source == None:
+            raise RuntimeError("To add a background noise you need to first insert a sound source")
+        
+
         pass
 
     # Add microphone array in the environment. Array contains R microphones, specified by their position in x,y,z coordinates
     def add_microphone_array(self, mic_locs: np.array) -> None:
-        pass
+        mic_array = MicrophoneArray(mic_locs)
+        self.mic_array = mic_array
 
     # plots 3D Simulation Environment, containing road surface, microphone positions and source trajectory
     def plot_environment():
@@ -97,7 +194,6 @@ class Environment:
         
         return alpha
 
-
     # Runs simulation. Returns array np.array([M,N]), where M is the number of microphones 
     # and N is the number of samples of the simulation. Array contains signals recorded by microphones
     def simulate() -> np.array:
@@ -109,7 +205,7 @@ class SoundSource:
     def __init__(
             self,
             position,
-            image = None,
+            image_pos = None,
             signal = None,
             trajectory = None,
             fs = 8000
@@ -117,7 +213,7 @@ class SoundSource:
 
         self.position = position
         self.trajectory = trajectory
-        self.image = image
+        self.image_pos = image_pos
         self.signal = signal
         self.fs = fs
 
@@ -152,8 +248,6 @@ class SoundSource:
 
 class SimulatorManager:
     __instance = None
-    A = None
-    B = None
 
     @staticmethod
     def getInstance():
@@ -163,34 +257,79 @@ class SimulatorManager:
 
     def __init__(
             self,
-            environment,
+            environment: Environment,
+            active_microphone,
+            source,
             primaryDelLine,
             secondaryDelLine,
             airAbsorptionFilters,
-            asphaltReflectionfilter,
         ) -> None:
         if SimulatorManager.__instance != None:
             raise Exception("SimulatorManager already instantiated")
         else:
             SimulatorManager.__instance = self
         self.environment = environment
+        self.active_microphone = active_microphone
+        self.source = source
         self.primaryDelLine = primaryDelLine
         self.secondaryDelLine = secondaryDelLine
         self.airAbsorptionFilters = airAbsorptionFilters
-        self.asphaltReflectionFilters = asphaltReflectionfilter
+        
+        self.asphaltReflectionFilterTable = self.compute_angle_reflection_table(
+            self.environment.road_material.abs_coeffs, 
+            self.environment.road_material.freqs, 
+            ntaps = 10)
 
     # Compute initial delay and set it into the two delay lines. 
     # Compute air absorption filters and asphalt reflection filter and store the precomputed values in a table. 
     # Instantiate delay lines.
-    def initialize(self):
+    def initialize(self, src_pos, mic_pos):
         self.primaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0,0]), fs = self.fs)
         self.secondaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0]), fs = self.fs)
+
+        # Compute direct distance and delay
+        d, tau = self._compute_delay(src_pos, mic_pos, self.environment.c)
+        
+        # Compute incidence angle
+        theta = self._compute_angle(src_pos, mic_pos)
+
+        # Compute distance between src and reflection point
+        a = src_pos[2] / np.sin(theta)
+        tau_1 = a / self.environment.c
+        
+        # Compute distance between reflection point and microphone
+        b = src_pos[2] / np.sin(theta)
+        tau_2 = b / self.environment.c
+
+        # Set initial delays
+        self.primaryDelLine.set_delays(np.array([tau, tau_1]))
+        self.secondaryDelLine.set_delays(tau_2)
+        
 
     # Compute new delays given acutal positions of src and microphone.
     # Update coefficients of filters with new positions.
     # Produce output value.
-    def update():
-        pass
+    def update(self, src_pos, mic_pos):
+        # Compute direct distance and delay
+        d, tau = self._compute_delay(src_pos, mic_pos, self.environment.c)
+
+        # Compute incidence angle
+        theta = self._compute_angle(src_pos, mic_pos)
+
+        # Compute distance between src and reflection point
+        a = src_pos[2] / np.sin(theta)
+        tau_1 = a / self.environment.c
+        
+        # Compute distance between reflection point and microphone
+        b = mic_pos[2] / np.sin(theta)
+        tau_2 = b / self.environment.c
+
+        # Update delays and get new sample reads
+        y_primary = self.primaryDelLine.update_delay_line(1, np.array([tau, tau_1]))
+        y_secondary = self.primaryDelLine.update_delay_line(1, np.array([tau_2]))
+
+        return y_primary, y_secondary
+        
     
     # Compute air absorption FIR filter with ntaps. Depends on distance and air absorption coefficients.
     def compute_air_absorption_filter(self, abs_coeffs, distance, numtaps):
@@ -204,13 +343,58 @@ class SimulatorManager:
     # Compute sound attenuation depending on distance between source and receiver. 
     # Propagation is assumed to be based on spherical waves.
     def compute_sound_attenduation(self, distance):
-        pass
+        return 1 / (4 * np.pi * distance)
     
     # Compute angle dependent asphalt reflection filters for a set of angles [-89,89]deg, with 
     # a resultion of 1deg, based on normal incidence asborption coefficients computed at frequencies freqs.
     # Filters are stored in a table np.array([89*2+1, ntaps]), where ntaps is the desired filter length
-    def compute_asphalt_reflection(self, absorption_coeffs, freqs, ntaps):
-        pass
+    def compute_angle_reflection_table(self, absorption_coeffs, freqs, ntaps):
+        theta_vector = np.arange(-89,89,1)
+        Z0 = self._compute_air_impedance()
+        # c = self.environment._compute_speed_sound()
+        refl = np.sqrt(1 - absorption_coeffs)
+        Z = - Z0 * (refl + 1) / (refl-1)
+        b_fir = np.zeros((len(theta_vector), ntaps))
+        
+        # Compute filters coefficients for all thetas
+        for idx, theta in enumerate(theta_vector):
+            # Absolute value is taken to prevent R from going below zero. In Kuttruff, "Acoustics - an Introduction" the modulus of R is used
+            # to compute reflections, and with our procedure we are not computing the imaginary part (see Nijl et al. Absorbing surfaces... 2006), 
+            # so it is coherent.
+            R = np.abs((Z * np.cos(math.radians(theta)) - Z0) / (Z * np.cos(math.radians(theta)) + Z0))
+            b_fir[idx] = scipy.signal.firwin2(ntaps, freqs / 4000, R)
+        
+        return b_fir
+    
+    def _compute_air_impedance(self):
+        ## Computes air impedance given:
+        #   T: temperature in Kelvin
+        #   p: atmospheric pressure in atm
+        #   c: speed of sound in air, at temperature T
+        self.environment.pressure = self.environment.pressure * 101325          # Convert atm to Pascal
+        R_spec = 287.058
+        return self.environment.pressure / (R_spec * self.environment.temperature) * self.environment.c
+
+    def compute_asphalt_reflection_filter(theta, b_fir, theta_vector):
+        idx = np.where(theta_vector == np.round(theta))
+        idx = idx[0][0]
+        return b_fir[idx]
+    
+
+    # Computes distance between source and receiver and delay in seconds.
+    # Arguments are source position, receiver position and speed of sound in air
+    def _compute_delay(self, src_pos, mic_pos, c):
+        d = np.sqrt(np.sum((src_pos - mic_pos)) ** 2)
+        tau = d / c
+        return d, tau
+    
+    # Compute incidence angle of sound wave on road surface, given source and microphone position
+    def _compute_angle(self, src_pos, mic_pos):
+        # Distance between image and microphone
+        dist = np.sqrt(np.sum(((src_pos - np.array([0, 0 , 2*src_pos[2]]) - mic_pos))) ** 2)
+        # Incidence angle
+        theta = np.arcsin(dist / (src_pos[2] + mic_pos[2]))
+        return theta
 
 
 class MicrophoneArray:

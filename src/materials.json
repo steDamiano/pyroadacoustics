@@ -1,0 +1,31 @@
+{
+    "m1_asphalt": {
+        "description": "M1 Asphalt Mixture",
+        "coeffs": [0.067, 0.261, 0.264, 0.606, 0.325, 0.175, 0.181, 0.181],
+        "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
+    },
+
+    "m4_asphalt": {
+        "description": "M4 Asphalt Mixture",
+        "coeffs": [0.201, 0.330, 0.269, 0.206, 0.212, 0.142, 0.105, 0.105],
+        "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
+    },
+        
+    "iso103_asphalt": {
+        "description": "ISO 103 Asphalt Mixture",
+        "coeffs": [0.077, 0.101, 0.125, 0.221, 0.077, 0.101, 0.125, 0.221],
+        "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
+    },
+
+    "isoAE4_asphalt": {
+        "description": "ISO AE4 Asphalt Mixture",
+        "coeffs": [0.063, 0.129, 0.139, 0.253, 0.063, 0.129, 0.139, 0.253],
+        "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
+    },
+
+    "Averaged Asphalts": {
+        "description": "Average asphalt model, see Notebook for details",
+        "coeffs": [0.0715, 0.1119, 0.1122, 0.1693, 0.1105, 0.1251, 0.1386, 0.1749],
+        "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
+    }
+}
