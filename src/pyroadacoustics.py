@@ -142,11 +142,11 @@ class Environment:
         source = SoundSource(position, position - np.array([0,0, 2 * position[2]]), signal, trajectory)
         self.source = source
     
-    # Add sound source to envrionment in specified position P, with specified signal S and trajectory T
+    # Add noise source to envrionment in specified position P
     # If no signal is specified, assign default one (####TBD####)
-    # If no trajectory is specified, source is assumed to be static
-    def add_noise_source(self, position, signal = None, trajectory = None) -> None:
-        pass
+    # Noise source is assumed to be static
+    def add_noise_source(self, position, signal = None) -> None:
+        raise NotImplementedError('Noise Sources are not supported yet')
 
     # Add background noise to the simulation with a given SNR. 
     # SNR is computed w.r.t the the signal received when the source is closest to the microphone
@@ -184,8 +184,16 @@ class Environment:
         self.mic_array = mic_array
 
     # plots 3D Simulation Environment, containing road surface, microphone positions and source trajectory
-    def plot_environment():
-        pass
+    def plot_environment(self):
+        plt.figure()
+        plt.plot(self.source.trajectory[:,0], self.source.trajectory[:,1])
+        plt.scatter(self.mic_array.mic_positions[:,0], self.mic_array.mic_positions[:,1], color = 'green', marker='x')
+        plt.legend(['Source Trajectory', 'Microphones'])
+        plt.xlabel('[m]')
+        plt.ylabel('[m]')
+        plt.suptitle('Simulation Scenario')
+        plt.title('Source and Microphones have height: z = %.2f' %self.mic_array.mic_positions[0,2])
+        plt.show()
 
     # Compute air absorption coefficients and store them in a np.array
     # Coeffs are computed based on temperature, pressure, relative humidity and are stored in dB scale
@@ -216,8 +224,27 @@ class Environment:
 
     # Runs simulation. Returns array np.array([M,N]), where M is the number of microphones 
     # and N is the number of samples of the simulation. Array contains signals recorded by microphones
-    def simulate() -> np.array:
-        pass
+    def simulate(self) -> np.array:
+        # Duration of the simulation
+        N = len(self.source.trajectory)
+        M = self.mic_array.nmics
+
+        signals = np.zeros((M,N))
+
+        for m in range(M):
+            # Select Active Microphone
+            active_mic = self.mic_array.mic_positions[m]
+        
+            # Instantiate Simulator Manager or call instance
+            manager = SimulatorManager(environment = self, active_microphone = active_mic, source = self.source, 
+            airAbsorptionFilters = self.air_absorption_coefficients)
+
+            # Define simulation loop
+            _temp = manager.initialize(self.source.position, active_mic)
+
+            # Compute output samples
+            for n in range(N):
+                signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
 
 
 class SoundSource:
@@ -268,6 +295,11 @@ class SoundSource:
 
 class SimulatorManager:
     __instance = None
+    _read1Buf = np.zeros(20)
+    _read2Buf = np.zeros(20)
+    _read3Buf = np.zeros(20)
+    _read4Buf = np.zeros(20)
+    _readBufPtr = 0
 
     @staticmethod
     def getInstance():
@@ -329,7 +361,7 @@ class SimulatorManager:
     # Compute new delays given acutal positions of src and microphone.
     # Update coefficients of filters with new positions.
     # Produce output value.
-    def update(self, src_pos, mic_pos):
+    def update(self, src_pos, mic_pos, signal_sample):
         # Compute direct distance and delay
         d, tau = self._compute_delay(src_pos, mic_pos, self.environment.c)
 
@@ -345,14 +377,78 @@ class SimulatorManager:
         tau_2 = b / self.environment.c
 
         # Update delays and get new sample reads
-        y_primary = self.primaryDelLine.update_delay_line(1, np.array([tau, tau_1]))
-        y_secondary = self.primaryDelLine.update_delay_line(1, np.array([tau_2]))
+        y_primary = self.primaryDelLine.update_delay_line(signal_sample, np.array([tau, tau_1]))
 
         # Store the read samples in a circular array to be used for filtering with air abs and asphalt refl
-        # THIS HAS TO BE DEBUGGED IN NOTEBOOK TOO
+        self._read1Buf = y_primary[0]
+        self._read2Buf = y_primary[1]
+        # self._read3Buf = y_secondary
 
-        return y_primary, y_secondary
-    
+        self._readBufPtr +=1
+        if self._readBufPtr >= 20:
+            self._readBufPtr -= 20
+        
+        ### DIRECT PATH ###
+
+        # Attenuation due to distance
+        att = self.compute_sound_attenduation(d)
+
+        # Attenuation due to air absorption
+        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionFilters, d, numtaps = 10)
+        sample_eval = 0
+        for ii in range(10):
+            sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        
+        # Direct Path Output Sample
+        y_dir =  att * sample_eval
+
+        ### REFLECTED PATH ###
+
+        # 1. From Source to Road Surface
+
+        # Attenuation due to distance
+        att = self.compute_sound_attenduation(a)
+        
+        # Attenuation due to air absorption
+        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionFilters, a, numtaps = 10)
+
+        sample_eval = 0
+        for ii in range(10):
+            sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        sample_eval = att * sample_eval
+        self._read3Buf[self._readBufPtr] = sample_eval
+
+        # 2. Asphalt Absorption
+        asphalt_filter_coeffs = self.compute_asphalt_reflection_filter(90 - theta, 
+            self.asphaltReflectionFilterTable, np.array([-89, 89]))
+        
+        sample_eval = 0
+        for ii in range(10):
+            sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
+        
+        
+        # 3. Second path in air --> Secondary Delay Line
+        y_secondary = self.primaryDelLine.update_delay_line(sample_eval, np.array([tau_2]))
+        self._read4Buf[self._readBufPtr] = y_secondary
+        # 4. From Road Surface to Receiver
+
+        # Attenuation due to distance
+        att = self.compute_sound_attenduation(b)
+
+        # Attenuation due to air absorption
+        # alpha = compute_air_absorption_coeffs(T, p_s, hrar, F)
+        # alpha = 10 ** (-alpha * drefl / 20)     # Convert coeffs in dB to linear scale
+        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionFilters, b, numtaps = 10)
+
+        sample_eval = 0
+        for ii in range(10):
+            sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        y_refl = att * sample_eval
+
+        y_received = y_dir + y_refl
+
+        return y_received
+
     
     # Compute air absorption FIR filter with ntaps. Depends on distance and air absorption coefficients.
     def compute_air_absorption_filter(self, abs_coeffs, distance, numtaps):
