@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal
 import math
 
-import atmospheric_functions
+import old.atmospheric_functions as atmospheric_functions
 
 def compute_default_reflection_coeffs(fs):
     ## Computes reflection coefficients from asphalt absorption coefficients table. Returns reflections coefficients

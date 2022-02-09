@@ -1,6 +1,6 @@
-import simulator_manager as sim
-import source as src
-import microphone_array
+import old.simulator_manager as sim
+import old.source as src
+import old.microphone_array as microphone_array
 import numpy as np
 
 source = src.Source(velocity = 5)

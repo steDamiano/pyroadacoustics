@@ -1,6 +1,6 @@
-import atmospheric_functions 
-import interpolation_filters
-import asphalt_absorption
+import old.atmospheric_functions as atmospheric_functions 
+import old.interpolation_filters as interpolation_filters
+import old.asphalt_absorption as asphalt_absorption
 
 import numpy as np
 
