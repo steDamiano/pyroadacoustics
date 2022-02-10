@@ -68,7 +68,7 @@ class SoundSource:
                 self.static_simduration = 1 / self.fs
             self.trajectory = np.tile(self.position, (round(self.fs * self.static_simduration), 1))
 
-    def create_trajectory(self, positions: np.array, speed: np.array) -> np.array:
+    def create_trajectory(self, positions: np.ndarray, speed: np.ndarray) -> np.ndarray:
         """
         Defines a trajectory for the sound source from a set of N positions (given as triplets of cartesian
         coordinates) and the values of the modulus of the source velocity between each subsequent couple of positions.

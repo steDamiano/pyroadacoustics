@@ -354,8 +354,8 @@ class SimulatorManager:
         tau_2 = b / self.environment.c
 
         # Set initial delays
-        self.primaryDelLine.set_delays(np.array([tau, tau_1]))
-        self.secondaryDelLine.set_delays(tau_2)
+        self.primaryDelLine.set_delays(np.array([tau * self.environment.fs, tau_1 * self.environment.fs]))
+        self.secondaryDelLine.set_delays(tau_2 * self.environment.fs)
         
 
     # Compute new delays given acutal positions of src and microphone.
@@ -377,7 +377,8 @@ class SimulatorManager:
         tau_2 = b / self.environment.c
 
         # Update delays and get new sample reads
-        y_primary = self.primaryDelLine.update_delay_line(signal_sample, np.array([tau, tau_1]))
+        y_primary = self.primaryDelLine.update_delay_line(signal_sample, np.array([tau * self.environment.fs, 
+            tau_1 * self.environment.fs]))
 
         # Store the read samples in a circular array to be used for filtering with air abs and asphalt refl
         self._read1Buf = y_primary[0]
@@ -428,7 +429,7 @@ class SimulatorManager:
         
         
         # 3. Second path in air --> Secondary Delay Line
-        y_secondary = self.primaryDelLine.update_delay_line(sample_eval, np.array([tau_2]))
+        y_secondary = self.primaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.environment.fs]))
         self._read4Buf[self._readBufPtr] = y_secondary
         # 4. From Road Surface to Receiver
 
