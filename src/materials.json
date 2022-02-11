@@ -23,7 +23,7 @@
         "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]
     },
 
-    "Averaged Asphalts": {
+    "average_asphalt": {
         "description": "Average asphalt model, see Notebook for details",
         "coeffs": [0.0715, 0.1119, 0.1122, 0.1693, 0.1105, 0.1251, 0.1386, 0.1749],
         "center_freqs": [315, 400, 500, 630, 800, 1000, 1250, 1600]

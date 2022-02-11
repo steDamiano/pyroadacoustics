@@ -23,15 +23,16 @@ class SoundSource:
 
     Methods
     -------
-    create_trajectory(positions, speed):
+    set_trajectory(positions, speed):
         Defines a trajectory from a given set of N positions (`positions`) and N-1 velocities (`speed`). The speed
         modulus is assumed to be constant between each couple of positions.
+    set_signal(signal):
+        Setter for signal attribute: assigns given signal to the sound source
     """
 
     def __init__(
             self,
             position = np.array([0,0,1]),
-            signal = None,
             fs = 8000,
             is_static = True,
             static_simduration = 5
@@ -45,9 +46,6 @@ class SoundSource:
         position : ndarray
             1D Array containing 3 cartesian coordinates `[x,y,z]` that define initial source position, 
             by default [0,0,1]
-        signal : ndarray, optional
-            1D Array containing samples of signal emitted by the source, by default None. If parameter
-            value is `None` a predefined frequency modulating sinusoidal signal is assigned to the source
         fs : int, optional
             Sampling frequency of the emitted signal, by default 8000
         is_static: Bool, optional
@@ -58,7 +56,7 @@ class SoundSource:
         """
 
         self.position = position
-        self.signal = signal
+        self.signal = None
         self.fs = fs
         self.is_static = is_static
         self.static_simduration = static_simduration
@@ -67,8 +65,19 @@ class SoundSource:
             if self.static_simduration == 0:
                 self.static_simduration = 1 / self.fs
             self.trajectory = np.tile(self.position, (round(self.fs * self.static_simduration), 1))
+        
+    def set_signal(self, signal: np.ndarray) -> None:
+        """
+        Setter for signal attribute: assigns given signal to the sound source
 
-    def create_trajectory(self, positions: np.ndarray, speed: np.ndarray) -> np.ndarray:
+        Parameters
+        ----------
+        signal : np.ndarray
+            1D Array containing samples of the source signal
+        """
+        self.signal = signal
+
+    def set_trajectory(self, positions: np.ndarray, speed: np.ndarray) -> np.ndarray:
         """
         Defines a trajectory for the sound source from a set of N positions (given as triplets of cartesian
         coordinates) and the values of the modulus of the source velocity between each subsequent couple of positions.

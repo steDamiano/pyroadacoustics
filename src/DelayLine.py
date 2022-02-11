@@ -215,6 +215,8 @@ class DelayLine:
         ValueError:
             If `method` is neither `Linear`, nor `Lagrange`, nor `Sinc`
         """
+        
+        # TODO Vectorization to speed up convolution
 
         if method == 'Lagrange':
             # Compute interpolation filter
