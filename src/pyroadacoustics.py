@@ -577,7 +577,7 @@ class DelayLine:
             # Check read and write pointers within delay line length
             while (self.read_ptr[i] < 0):
                 self.read_ptr[i] += self.N
-            while (self.write_ptr >= self.N - 1):
+            while (self.write_ptr >= self.N):
                 self.write_ptr -= self.N
             while (self.read_ptr[i] >= self.N - 1):
                 self.read_ptr[i] -= self.N

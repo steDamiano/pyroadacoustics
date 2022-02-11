@@ -1,6 +1,5 @@
 import numpy as np
 import math
-import warnings
 
 class DelayLine:
     """
@@ -55,9 +54,8 @@ class DelayLine:
 
     def __init__(
             self, 
-            N = 48000, 
-            write_ptr = 0, 
-            read_ptr = np.array([0.0]), 
+            N = 48000,
+            num_read_ptrs = 1,
             interpolation = 'Linear',
         ):
         """
@@ -68,12 +66,9 @@ class DelayLine:
         ----------
         N : int, optional
             Number of samples (i.e. elements) of array defining the delay line, by default 48000
-        write_ptr : int, optional
-            Position of pointer used when writing a signal sample on the delay line, by default 0
-        read_ptr : ndarray(dtype = float), optional
-            1D array containing data of type `float`, denoting the position of pointers used when reading a 
-            signal sample from the  dealy line. An arbitrary number of pointers can be used to perform read 
-            operations.
+        num_read_ptrs : int, optional
+            Number of pointers that will read values from the delay line, by default 1. The `write_ptr` attribute
+            will be instantiated as an 1D `ndarray` having num_read_pointers float entries.
         interpolation : str, optional
             String describing the type of interpolator to be used for fractional delay read operations. Can be:
             * Linear: linear interpolation
@@ -81,12 +76,27 @@ class DelayLine:
             * Sinc: sinc interpolation with filter length of 11 taps
             
             By default: 'Linear'
-
+        
+        Raises
+        ------
+        ValueError:
+            If `N` is negative or equal to zero
+        ValueError:
+            If `num_read_ptrs` <= 0
+        ValueError:
+            If `interpolation` is neither Linear, nor Sinc, nor Lagrange
         """
 
+        if N <= 0:
+            raise ValueError("Delay Line size must be greater than zero.")
+        if num_read_ptrs <= 0:
+            raise ValueError("Number of read pointers must be greater than zero.")
+        if interpolation != 'Linear' and interpolation != "Lagrange" and interpolation != "Sinc":
+            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, or `Sinc`")
+
         self.N = N
-        self.write_ptr = write_ptr
-        self.read_ptr = read_ptr
+        self.write_ptr = 0
+        self.read_ptr = np.zeros(num_read_ptrs, dtype=float)
         self.delay_line = np.zeros(N)
         self.interpolation = interpolation
 
@@ -104,15 +114,20 @@ class DelayLine:
         Raises
         ------
         ValueError:
-            If one or more elements of the delay array is negative
+            If one or more elements of the delay array is zero or negative
         ValueError:
             If len(delay) is different from number of read pointers
+        RuntimeError:
+            If one or more elements of the delay array are greater than the length of the delay line
         """
 
-        if np.any(delay < 0):
+        if np.any(delay <= 0):
             raise ValueError('Delays must be non-negative numbers')
         if len(delay) != len(self.read_ptr):
             raise ValueError('Length of delay array should match number of read pointers')
+        if np.any(delay >= self.N):
+            raise RuntimeError('Delay greater than delay line length has been encountered. Consider'
+            'using a longer delay line')
         
         for i in range(len(self.read_ptr)):
             self.read_ptr[i] = self.write_ptr - delay[i]
@@ -160,13 +175,12 @@ class DelayLine:
 
             # Update read pointer position
             self.read_ptr[i] = self.write_ptr - delay[i]
-
             # Check that read and write pointers are within delay line length
             while (self.read_ptr[i] < 0):
                 self.read_ptr[i] += self.N
-            while (self.write_ptr >= self.N - 1):
+            while (self.write_ptr >= self.N):
                 self.write_ptr -= self.N
-            while (self.read_ptr[i] >= self.N - 1):
+            while (self.read_ptr[i] >= self.N):
                 self.read_ptr[i] -= self.N
         return y
 
@@ -210,12 +224,12 @@ class DelayLine:
             # Convolve signal with filter
             out = 0
             for i in range(0, len(h_lagrange)):
-                out = out + h_lagrange[i] * self.delay_line[np.mod(read_ptr_integer + i, self.N)]
+                out = out + h_lagrange[i] * self.delay_line[np.mod(read_ptr_integer + i - math.floor(order/2), self.N)]
             return out
 
         elif method == 'Linear':
             # Linear Interpolation formula
-            return d * self.delay_line[read_ptr_integer + 1] + (1 - d) * self.delay_line[read_ptr_integer]
+            return d * self.delay_line[np.mod(read_ptr_integer + 1, self.N)] + (1 - d) * self.delay_line[read_ptr_integer]
 
         elif method == 'Sinc':
             # Define windowed sinc filter paramters and compute coefficients
@@ -270,7 +284,7 @@ class DelayLine:
         Parameters
         ----------
         sinc_samples : int
-            Number of taps of the filter
+            Number of taps of the filter, should be an odd number
         sinc_window : np.ndarray
             Window to be applied to sinc function. Length of the window must be equal to sinc_samples
         delay : float
