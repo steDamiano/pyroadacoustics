@@ -128,7 +128,7 @@ class Material:
         estimated_abs_coeffs[estimated_abs_coeffs > 1.0] = 1.0
 
         self.absorption = {
-            "description": "Interpolated Material",
+            "description":  self.absorption["description"],
             "coeffs": estimated_abs_coeffs,
             "center_freqs": full_spectrum
         }

@@ -2,10 +2,10 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-from Material import Material
-from SoundSource import SoundSource
-from MicrophoneArray import MicrophoneArray
-from SimulatorManager import SimulatorManager
+from src.Material import Material
+from src.SoundSource import SoundSource
+from src.MicrophoneArray import MicrophoneArray
+from src.SimulatorManager import SimulatorManager
 
 class Environment:
     """
@@ -85,10 +85,10 @@ class Environment:
             source: SoundSource = None,
             background_noise: np.ndarray = None,
             mic_array: MicrophoneArray = None,
-            temperature: float = 25,
+            temperature: float = 20,
             pressure: float = 1,
             rel_humidity: int = 50,
-            road_material: Material = None
+            road_material: Material = Material('average_asphalt')
         ) -> None:
         """
         Creates an Environment object by setting the simulation scene parameters. The Environment is defined by
@@ -113,7 +113,7 @@ class Environment:
         mic_array : MicrophoneArray, optional
             Microphone array containing positions of microphones that record sound in the scene, by default None
         temperature : float, optional
-            Atmospheric temperature in `Celsius` degrees, by default 25 degrees
+            Atmospheric temperature in `Celsius` degrees, by default 20 degrees
         pressure : float, optional
             Atmospheric pressure in `atm`, by default 1 atm
         rel_humidity : int, optional
@@ -121,6 +121,11 @@ class Environment:
         road_material : Material, optional
             Material object containing absorption and reflection properties of road surface, by default None. If 
             is None, an average asphalt material is chosen from Database.
+        
+        Raises
+        ------
+        ValueError:
+            if rel_humidity is lower than zero or greater than 100
         """
 
         self.fs = fs
@@ -129,10 +134,9 @@ class Environment:
         self.mic_array = mic_array
         self.temperature = temperature
         self.pressure = pressure
+        if rel_humidity < 0 or rel_humidity > 100:
+            raise ValueError("Humidity must be greater than zero and lower than 100")
         self.rel_humidity = rel_humidity
-
-        if road_material == None:
-            road_material = Material('average_asphalt')
         self.road_material = road_material
         
         self.c = self._compute_speed_sound(temperature)
@@ -190,20 +194,28 @@ class Environment:
 
             If source is moving, it must be assigned. If source is static, it takes default value 1
 
+        Raises
+        ------
+        RuntimeError:
+            If a source is already present in the acoustic scene (self.source != None)
+        
         Modifies
         --------
         source
             The created `SoundSource` object is assigned to the corresponding attribute
         """
-
+        if self.source != None:
+            raise RuntimeError("Cannot insert more than one sound source")
         is_static = False
-        if trajectory_points == None:
+        if type(trajectory_points) != np.ndarray:
             is_static = True
             # Define duration of the simulation
             # simulation_duration = 5
             # trajectory = np.tile(position, (simulation_duration * self.fs))
-        source = SoundSource(position, self.fs, is_static)
-        source.set_trajectory(trajectory_points, source_velocity)
+            source = SoundSource(position, self.fs, is_static)
+        else:
+            source = SoundSource(position = position, fs = self.fs, is_static = False)
+            source.set_trajectory(trajectory_points, source_velocity)
 
         if signal == None:
             # Define a default signal --> sinusoidal siren
@@ -381,44 +393,55 @@ class Environment:
             for n in range(N):
                 signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
     
-    def _compute_air_absorption_coefficients(self) -> np.ndarray:
+    def _compute_air_absorption_coefficients(self, nbands: int = 50) -> np.ndarray:
         """
-        Computes air absorption coefficients at a set of 50 equispaced frequencies in the range `[0, fs]`. 
+        Computes air absorption coefficients at a set of nbands equispaced frequencies in the range `[0, fs]`, based
+        on the ISO 9613-1 standard. 
+
+        A different formulation can be found in 
+        `Keith Attenborough, "Sound Propagation in the Atmosphere", Springer Handbook of Acoustics`, and can be set
+        by using T01 = 293.15
         The coefficients depend on the atmsopsheric temperature, pressure and relative humidity.
+
+        Parameters
+        ----------
+        nbands: int
+            Number of frequency bands in which to compute air absorption coefficients, by default 50
 
         Returns
         -------
         np.ndarray
-            1D Array containing 50 air absorption coefficients, computed in dB scale, at the defined 
+            1D Array containing nbands air absorption coefficients, computed in dB scale, at the defined 
             set of frequencies
 
         """
 
         T0 = 293.15     # Standard room temperature T = 20deg Celsius
-        T01 = 273.16    # Standard room temperature with correction coefficient
+        T01 = 273.16    # Triple point isotherm temperature, ISO 9613-1
+        T = self.temperature + 273.15
         ps0 = 1         # Standard atmospheric pressure in atm
 
-        f = np.linspace(0, self.fs, num=50)     # Frequencies in which coeffs will be computed
+        f = np.linspace(0, self.fs, num=nbands)     # Frequencies in which coeffs will be computed
         
-        Csat = -6.8346 * math.pow(T01 / self.temperature, 1.261) + 4.6151
+        Csat = -6.8346 * math.pow(T01 / T, 1.261) + 4.6151
         rhosat = math.pow(10, Csat)
         H = rhosat * self.rel_humidity * ps0 / self.pressure
 
-        frn = (self.pressure / ps0) * math.pow(T0 / self.temperature, 0.5) * (
-                9 + 280 * H * math.exp(-4.17 * (math.pow(T0 / self.temperature, 1/3.) - 1)))
+        frn = (self.pressure / ps0) * math.pow(T0 / T, 0.5) * (
+                9 + 280 * H * math.exp(-4.17 * (math.pow(T0 / T, 1/3.) - 1)))
 
         fro = (self.pressure / ps0) * (24.0 + 4.04e4 * H * (0.02 + H) / (0.391 + H))
 
         alpha = f * f * (
-            1.84e-11 / ( math.pow(T0 / self.temperature, 0.5) * self.pressure / ps0 )
-            + math.pow(self.temperature / T0, -2.5)
+            1.84e-11 / ( math.pow(T0 / T, 0.5) * self.pressure / ps0 )
+            + math.pow(T / T0, -2.5)
             * (
-                0.10680 * math.exp(-3352 / self.temperature) * frn / (f * f + frn * frn)
-                + 0.01278 * math.exp(-2239.1 / self.temperature) * fro / (f * f + fro * fro)
+                0.10680 * math.exp(-3352 / T) * frn / (f * f + frn * frn)
+                + 0.01278 * math.exp(-2239.1 / T) * fro / (f * f + fro * fro)
                 )
             )
         
-        return alpha
+        return alpha * 20 / np.log(10)
     
     def _compute_air_impedance(self, T: float, p: float = 1, c: float = None) -> float:
         """
@@ -468,7 +491,3 @@ class Environment:
         """
 
         return 331.3 * np.sqrt(1 + T / 273.15)
-
-
-T = 15
-print(331.3 * np.sqrt(1 + T / 273.15))

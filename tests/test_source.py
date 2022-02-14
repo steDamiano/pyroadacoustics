@@ -18,17 +18,17 @@ class SoundSourceTest(unittest.TestCase):
     def test_define_trajectory(self):
         # Static Source
         src = SoundSource(is_static= True)
-        self.assertRaises(RuntimeError, src.create_trajectory, np.array([[1,1,1],[1,2,1]]), np.array([1]))
+        self.assertRaises(RuntimeError, src.set_trajectory, np.array([[1,1,1],[1,2,1]]), np.array([1]))
 
         # Moving Source
         
         # Wrong number of speed values
         src = SoundSource(is_static= False)
-        self.assertRaises(ValueError, src.create_trajectory, np.array([[1,1,1],[1,2,1]]), np.array([1,3]))
+        self.assertRaises(ValueError, src.set_trajectory, np.array([[1,1,1],[1,2,1]]), np.array([1,3]))
 
         # Constant Speed
         src = SoundSource(is_static= False)
-        src.create_trajectory(np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([1]))
+        src.set_trajectory(np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([1]))
         self.assertEqual(np.shape(src.trajectory)[1], 3)
         self.assertIn(np.array([1,1,1]), src.trajectory)
         self.assertIn(np.array([1,2,1]), src.trajectory)
@@ -40,12 +40,12 @@ class SoundSourceTest(unittest.TestCase):
 
         # Zero speed
         src = SoundSource(is_static= False)
-        self.assertRaises(ValueError, src.create_trajectory, np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([1, 0]))
-        self.assertRaises(ValueError, src.create_trajectory, np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([0]))
+        self.assertRaises(ValueError, src.set_trajectory, np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([1, 0]))
+        self.assertRaises(ValueError, src.set_trajectory, np.array([[1,1,1],[1,2,1], [5,2,1]]),np.array([0]))
 
         # Coincident trajectory points
         src = SoundSource(is_static= False)
-        src.create_trajectory(np.array([[1,1,1],[1,1,1], [5,2,1]]),np.array([1]))
+        src.set_trajectory(np.array([[1,1,1],[1,1,1], [5,2,1]]),np.array([1]))
         # plt.figure()
         # plt.plot(src.trajectory[:,0], src.trajectory[:,1])
         # plt.show()

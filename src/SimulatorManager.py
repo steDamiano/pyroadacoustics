@@ -1,6 +1,6 @@
 import numpy as np
 #from Environment import Environment
-from DelayLine import DelayLine
+from src.DelayLine import DelayLine
 
 class SimulatorManager:
     __instance = None
