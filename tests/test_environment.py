@@ -81,11 +81,79 @@ class EnvironmentTest(unittest.TestCase):
 
         # Add a dynamic source
         env = Environment()
-        print(env.source)
         env.add_source(position = np.array([0., 3., 5.]), 
             trajectory_points = np.array([[0., 3., 5.], [0., 3., -5.]]), source_velocity = np.array([5]))
         self.assertEqual(env.source.is_static, False)
+    
+    def test_add_micarray(self):
+        # Add wrong elements
+        env = Environment()
+        self.assertRaises(ValueError, env.add_microphone_array, np.array([[0,0,0], [0,1]], dtype=object))
 
+        # Add single microphone
+        env = Environment()
+        env.add_microphone_array(np.array([[1,3,2]]))
+        self.assertEqual(env.mic_array.nmics, 1)
+
+        # Add second array
+        self.assertRaises(RuntimeError, env.add_microphone_array, np.array([0,0,0]))
+
+        # Add multiple microphones
+        env = Environment()
+        positions = np.array([[1, 1, 1], [1, 1.2, 1], [1, 1.4, 1]])
+        env.add_microphone_array(positions)
+        self.assertEqual(env.mic_array.nmics, 3)
+        self.assertTrue(np.array_equiv(env.mic_array.mic_positions, positions))
+    
+    def test_background_noise(self):
+        noise_sig = np.random.randn(3000) # np.random.randn(3000)
+
+        # Add noise without source
+        env = Environment()
+        self.assertRaises(RuntimeError, env.add_background_noise, noise_sig)
+        env.add_microphone_array(np.array([[0,0,0]]))
+        self.assertRaises(RuntimeError, env.add_background_noise, noise_sig)
+
+        # Add noise without microphones
+        env = Environment()
+        env.add_source(position=np.array([0,3,5]))
+        self.assertRaises(RuntimeError, env.add_background_noise, noise_sig)
+
+        # Add noise for static source scene
+        env = Environment()
+        src_signal = np.ones(1000)
+        env.add_microphone_array(np.array([[0,0,0]]))
+        env.add_source(position = np.array([0, 3, 0]), signal = src_signal)
+        env.add_background_noise(noise_sig, SNR = 10)
+        self.assertAlmostEqual(20 * np.log10(np.sqrt(np.sum(env.source.signal /(4*np.pi*3)** 2)) / 
+            np.sqrt(np.sum(env.background_noise ** 2))), 10)
+        
+        # Add noise for dynamic source scene - 2D
+        env = Environment()
+        src_signal = np.ones(1000)
+        env.add_microphone_array(np.array([[0,0,0]]))
+        env.add_source(position = np.array([3, 5, 0]), trajectory_points = np.array([[3,5,0], [3,-5,0]]), 
+            source_velocity = np.array([5]), signal=src_signal)
+        env.add_background_noise(noise_sig, SNR = 10)
+        self.assertAlmostEqual(20 * np.log10(np.sqrt(np.sum((env.source.signal /(4*np.pi*3))** 2)) / 
+            np.sqrt(np.sum(env.background_noise ** 2))), 10)
+
+        # Add noise for dynamic source scene - 3D
+        env = Environment()
+        src_signal = np.ones(1000)
+        env.add_microphone_array(np.array([[0,0,0]]))
+        env.add_source(position = np.array([3, 5, 4]), trajectory_points = np.array([[3,5,4], [3,-5,4]]), 
+            source_velocity = np.array([5]), signal=src_signal)
+        env.add_background_noise(noise_sig, SNR = 10)
+        self.assertAlmostEqual(20 * np.log10(np.sqrt(np.sum((env.source.signal /(4*np.pi*5))** 2)) / 
+            np.sqrt(np.sum(env.background_noise ** 2))), 10)
+
+    def test_plot(self):
+        env = Environment()
+        env.add_microphone_array(np.array([[0.,0.,0.],[0.,0.5,0.],[0.,1.,0]]))
+        env.add_source(position = np.array([3, 5, 0]), trajectory_points = np.array([[3,5,0], [3,-5,0], [0,-5,0]]), 
+            source_velocity = np.array([5, 2]))
+        env.plot_environment()
 
 if __name__ == '__main__':
     unittest.main()

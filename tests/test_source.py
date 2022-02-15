@@ -49,7 +49,12 @@ class SoundSourceTest(unittest.TestCase):
         # plt.figure()
         # plt.plot(src.trajectory[:,0], src.trajectory[:,1])
         # plt.show()
-        
+    
+    def test_set_signal(self):
+        dummy_signal = np.sin(2 * np.pi * 400 * np.arange(0,2, 1/8000))
+        src = SoundSource(np.array([0,3,5]), fs = 8000, is_static=True, static_simduration=5)
+        src.set_signal(dummy_signal)
+        self.assertEqual(np.shape(dummy_signal), np.shape(src.signal))
         
 
 

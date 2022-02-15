@@ -204,10 +204,10 @@ class Environment:
         source
             The created `SoundSource` object is assigned to the corresponding attribute
         """
-        if self.source != None:
+        if self.source is not None:
             raise RuntimeError("Cannot insert more than one sound source")
         is_static = False
-        if type(trajectory_points) != np.ndarray:
+        if trajectory_points is None:
             is_static = True
             # Define duration of the simulation
             # simulation_duration = 5
@@ -217,7 +217,7 @@ class Environment:
             source = SoundSource(position = position, fs = self.fs, is_static = False)
             source.set_trajectory(trajectory_points, source_velocity)
 
-        if signal == None:
+        if signal is None:
             # Define a default signal --> sinusoidal siren
             simulation_duration = len(source.trajectory) / self.fs
             
@@ -231,8 +231,13 @@ class Environment:
                 signal[i] = 0.2 * np.sin(2 * np.pi * f * t[i] + 600 * np.sin(2 * np.pi * f_lfo * t[i]))
 
         # If trajectory is longer than signal, loop the signal
-        while len(source.trajectory) < len(signal):
-            np.append(signal, signal)
+        while len(signal) < len(source.trajectory):
+            signal = np.append(signal, signal)
+        if len(signal) > len(source.trajectory):
+            signal = signal[0:len(source.trajectory)]
+        
+        # Add signal to the sound source
+        source.set_signal(signal)
 
         self.source = source
     
@@ -261,7 +266,7 @@ class Environment:
     def add_background_noise(self, signal: np.ndarray = None, SNR: float = 15) -> None:
         """
         Defines background noise signal to be added to the simulation. The background noise is assumed
-        to be of diffuse type, and is defined based on the SNR in dB scalebetween the noise signal and source 
+        to be of diffuse type, and is defined based on the SNR in dB scale between the noise signal and source 
         signal, computed in the position along the trajectory closest to the first microphone of the microphone 
         array.
 
@@ -277,7 +282,7 @@ class Environment:
         Raises
         ------
         RuntimeError
-            If the source has not been instantiated yet
+            If the source or the mic_array has not been instantiated yet
         
         Modifies
         --------
@@ -285,26 +290,35 @@ class Environment:
             The computed background noise signal samples are assigned to the corresponding attribute of the class
 
         """
-        if self.source == None:
-            raise RuntimeError("To add a background noise you need to first insert a sound source")
+        if self.source == None or self.mic_array == None:
+            raise RuntimeError("To add a background noise you need to first insert a sound source"
+                "and a microphone array")
         
-        if signal == None:
+        if signal is None:
             # Define default signal --> white noise
             simulation_duration = len(self.source.trajectory) / self.fs
             t = np.arange(0, simulation_duration, 1 / self.fs)
             signal = np.random.randn(t)
+        
+        else:
+            while(len(signal) < len(self.source.trajectory)):
+                signal = np.append(signal, signal)
+            if len(signal) > len(self.source.trajectory):
+                signal = signal[0:len(self.source.trajectory)]
 
         # Find closest position between source and first microphone (reference)
         d_min = float('inf')
-
-        for i in range(len(self.source.trajectory)):
-            d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
-            if  d_temp < d_min:
-                d_min = d_temp
+        if self.source.is_static:
+            d_min = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.position) ** 2))
+        else:
+            for i in range(len(self.source.trajectory)):
+                d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
+                if  d_temp < d_min:
+                    d_min = d_temp
         
         # Compute SNR
-        noise_attenuation = np.sqrt(np.sum((self.source.signal ** 2) / (4 * np.pi * d_min)) / 
-            (10 ** (SNR/10) * np.sum((signal ** 2) / (4 * np.pi * d_min))))
+        noise_attenuation = np.sqrt(np.sum((self.source.signal / (4 * np.pi * d_min))** 2) / (10 ** (SNR/10) 
+            * np.sum((signal) ** 2)))
         signal = signal * noise_attenuation
         
         self.background_noise = signal
@@ -321,13 +335,19 @@ class Environment:
         mic_locs : np.ndarray
             2D Array containing N triplets of cartesian coordinates [x,y,z] defining the position of the 
             microphones of the array
+        
+        Raises
+        ------
+        RuntimeError:
+            If a microphone array is already present in the acoustic scene when method is called
 
         Modifies
         --------
         mic_array
             The instantiated MicrophoneArray is assigned to the corresponding Environment attribute
         """
-
+        if self.mic_array != None:
+            raise RuntimeError("Cannot insert more than one microphone array")
         mic_array = MicrophoneArray(mic_locs)
         self.mic_array = mic_array
 
