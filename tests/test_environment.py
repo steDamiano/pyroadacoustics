@@ -1,5 +1,3 @@
-from multiprocessing.sharedctypes import Value
-from turtle import position
 import matplotlib.pyplot as plt
 import numpy as np
 import unittest
@@ -7,7 +5,6 @@ import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.Material import Material
-from src.SoundSource import SoundSource
 from src.Environment import Environment
 
 class EnvironmentTest(unittest.TestCase):
