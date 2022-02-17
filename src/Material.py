@@ -117,7 +117,7 @@ class Material:
         if freqs[-1] <= fs / 2:
             # Add dummy coefficient at 8kHz -> assumption that absorption gets high values at high frequencies
             freqs = np.append(freqs, fs)
-            coeffs = np.append(self.absorption["coeffs"], 0.8)
+            coeffs = np.append(self.absorption["coeffs"], 0.3)
         
         model_abs = np.polyfit(freqs, coeffs, interp_degree)
         full_spectrum = np.linspace(0, 1, n_bands) * fs / 2

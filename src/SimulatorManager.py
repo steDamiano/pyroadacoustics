@@ -4,7 +4,6 @@ import math
 
 from src.DelayLine import DelayLine
 from src.Material import Material
-from src.SoundSource import SoundSource
 
 class SimulatorManager:
     """
@@ -47,12 +46,6 @@ class SimulatorManager:
         Acoustic impedance of air
     road_material: Material
         Asphalt type of the road surface, defined by its absorption and reflection properties
-    active_mic_pos: np.ndarray
-        1D Array containing 3 [x,y,z] cartesian coordinates indicating the position of the microphone used for the
-        current simulation
-    source_pos: np.ndarray
-        1D Array containing 3 [x,y,z] cartesian coordinates indicating the position of the sound source at the 
-        current simulation instant
     primaryDelayLine: DelayLine
         Primary `DelayLine` component, used to compute delays corresponding to propagation of sound between source
         and receiver on direct path, and between image source and road surface, on reflected path
@@ -75,70 +68,89 @@ class SimulatorManager:
     update(src_pos: np.ndarray, mic_pos: np.ndarray, signal_sample: float):
         Updates delays on the primary and secondary delay lines given the new position of the source, and produces
         a new sample received by the microphone
-    compute_air_absorption_filter(abs_coeffs: np.ndarray, distance: float, numtaps: int):
-        Computes an air absorption FIR filter with `numtaps` taps, depending on the relative distance between
-        the source and the microphone
-    compute_angle_reflection_table(absorption_coeffs: np.ndarray, freqs: np.ndarray, ntaps: int):
-        Computes the table containing the `ntaps`-taps FIR filters that model angle dependent asphalt absorption
-        in a set of angles in the range [-89, 89] degrees.
-    get_asphalt_reflection_filter(theta: float, b_fir: np.ndarray, theta_vector: np.ndarray):
-        Retrieves the FIR filter corresponding to the asphalt reflection at angle `theta` from the pre-computed
-        table
     """
-
-    __instance = None
-    _read1Buf = np.zeros(20)
-    _read2Buf = np.zeros(20)
-    _read3Buf = np.zeros(20)
-    _read4Buf = np.zeros(20)
-    _readBufPtr = 0
-
-    @staticmethod
-    def getInstance():
-        if SimulatorManager.__instance == None:
-            SimulatorManager()
-        return SimulatorManager.__instance
 
     def __init__(
             self,
             c: float,                       # speed of sound in air 
             fs: int,                        # sampling frequency
-            Z0: float,                      # characteristic impedance of air
-            active_mic_pos: np.ndarray,     # position of active microphone
+            Z0: int,                      # characteristic impedance of air
             road_material: Material,        # Absorption properties of road surface
-            source_pos: SoundSource,            # Sound source emitting sound
-            primaryDelLine: DelayLine,
-            secondaryDelLine: DelayLine,
             airAbsorptionCoefficients: np.ndarray,
         ) -> None:
-        if SimulatorManager.__instance != None:
-            raise Exception("SimulatorManager already instantiated")
-        else:
-            SimulatorManager.__instance = self
-        self.c = c
-        self.fs = fs,
-        self.Z0 = Z0,
-        self.road_material = road_material
-        self.active_mic_pos = active_mic_pos
-        self.source_pos = source_pos
-        self.primaryDelLine = primaryDelLine
-        self.secondaryDelLine = secondaryDelLine
-        self.airAbsorptionCoefficients = airAbsorptionCoefficients
-        
-        self.asphaltReflectionFilterTable = self.compute_angle_reflection_table(
-            self.road_material.absorption["coeffs"], 
-            self.road_material.absorption["center_freqs"], 
-            ntaps = 10)
+        """
+        Creates a `SimulatorManager` object containing all the methods and attributes required to run the acoustic
+        simulation. When the constructor is called, the environmental parameters previously defined in the object
+        `Environment` are stored into the simulator manager (c, fs, Z0, road_material, airAbsorptionCoefficients). 
+        In addition, the two `DelayLine` objects required for the simulation are instantiated as empty circular 
+        arrays with 48000 entries. The `asphaltReflectionFilterTable` in pre-computed and stored as an instance 
+        attribute containing the FIR filter coefficients that describe asphalt reflection at different angles of
+        incidence of the sound wave emitted by the source. This will result in a reduction of the computational load,
+        in that the computation of a new filter depending on the instantaneous incidence angle is changed into a 
+        table lookup. The set of considered incidence angles is stored in `_theta_vector` in degrees.
 
-    # Compute initial delay and set it into the two delay lines. 
-    # Compute air absorption filters and asphalt reflection filter and store the precomputed values in a table. 
-    # Instantiate delay lines.
+        Finally, a set of auxiliary buffers are instantiated and will be used for filtering purpose, together with a
+        read pointer to extract value from these buffers.
+
+        Parameters
+        ----------
+        c : float
+            _description_
+        fs: int
+            _description_
+        Z0: float
+            _description_
+        road_material: Material
+            _description_
+        airAbsorptionCoefficients: np.ndarray
+            _description_
+        """
+        self.c = c
+        self.fs = fs
+        self.Z0 = Z0
+        self.road_material = road_material
+        self.airAbsorptionCoefficients = airAbsorptionCoefficients
+
+        # Instantiation of two delay lines used for the simulations
+        self.primaryDelLine = DelayLine(N = 48000, num_read_ptrs = 2, interpolation = 'Sinc') 
+        self.secondaryDelLine = DelayLine(N = 48000, num_read_ptrs = 1, interpolation = 'Sinc')
+
+        # Array containing all possible incidence angles for pre-computed reflection filter table
+        self._theta_vector = np.arange(-89,89,1)
+
+        # Instantiation of table containing asphalt reflection filters
+        self.asphaltReflectionFilterTable = self._compute_angle_reflection_table(ntaps = 11)
+        
+        # Buffers to store previous data read from delay lines for filtering purpose
+        self._read1Buf = np.zeros(20)
+        self._read2Buf = np.zeros(20)
+        self._read3Buf = np.zeros(20)
+        self._read4Buf = np.zeros(20)
+        
+        # Read Pointer on buffers -> same pointer for all buffers
+        self._readBufPtr = 0
+
     def initialize(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> None:
-        self.primaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0,0]), fs = self.fs)
-        self.secondaryDelLine = DelayLine(N = 48000, write_ptr = 0, read_ptr = np.array([0]), fs = self.fs)
+        """
+        Computes the propagation delays along the paths:
+        * Direct path from source initial position to microphone
+        * Path from source initial position to incidence point on asphalt surface, along reflected path
+        * Path from incidence point on asphalt surface to microphone, along reflected path
+        and sets the corresponding initial delays on the two delay lines.
+
+        This method must be called at the start of every simulation to set the initial conditions that
+        ensure no discontinuity is generated at the first simulation instant.
+
+        Parameters
+        ----------
+        src_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the initial position of the sound source
+        mic_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the microphone
+        """
 
         # Compute direct distance and delay
-        d, tau = self._compute_delay(src_pos, mic_pos, self.c)
+        _, tau = self._compute_delay(src_pos, mic_pos)
         
         # Compute incidence angle
         theta = self._compute_angle(src_pos, mic_pos)
@@ -153,7 +165,7 @@ class SimulatorManager:
 
         # Set initial delays
         self.primaryDelLine.set_delays(np.array([tau * self.fs, tau_1 * self.fs]))
-        self.secondaryDelLine.set_delays(tau_2 * self.fs)
+        self.secondaryDelLine.set_delays(np.array([tau_2 * self.fs]))
         
 
     # Compute new delays given acutal positions of src and microphone.
@@ -193,7 +205,7 @@ class SimulatorManager:
         att = self._compute_sound_attenuation(d)
 
         # Attenuation due to air absorption
-        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionCoefficients, d, numtaps = 10)
+        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, d, numtaps = 11)
         sample_eval = 0
         for ii in range(10):
             sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
@@ -209,7 +221,7 @@ class SimulatorManager:
         att = self._compute_sound_attenuation(a)
         
         # Attenuation due to air absorption
-        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionCoefficients, a, numtaps = 10)
+        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, a, numtaps = 11)
 
         sample_eval = 0
         for ii in range(10):
@@ -218,7 +230,7 @@ class SimulatorManager:
         self._read3Buf[self._readBufPtr] = sample_eval
 
         # 2. Asphalt Absorption
-        asphalt_filter_coeffs = self.get_asphalt_reflection_filter(90 - theta, 
+        asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - theta, 
             self.asphaltReflectionFilterTable, np.array([-89, 89]))
         
         sample_eval = 0
@@ -237,7 +249,7 @@ class SimulatorManager:
         # Attenuation due to air absorption
         # alpha = compute_air_absorption_coeffs(T, p_s, hrar, F)
         # alpha = 10 ** (-alpha * drefl / 20)     # Convert coeffs in dB to linear scale
-        filt_coeffs = self.compute_air_absorption_filter(self.airAbsorptionCoefficients, b, numtaps = 10)
+        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, b, numtaps = 11)
 
         sample_eval = 0
         for ii in range(10):
@@ -248,54 +260,156 @@ class SimulatorManager:
 
         return y_received
     
-    # Compute air absorption FIR filter with ntaps. Depends on distance and air absorption coefficients.
-    def compute_air_absorption_filter(self, abs_coeffs: np.ndarray, distance: float, numtaps: int):
-        f = np.linspace(0, 11000, num=50)
+    def _compute_air_absorption_filter(self, distance: float, numtaps: int) -> np.ndarray:
+        """
+        Computes air absorption filter as a FIR filter with `numtaps` coefficients. The filter depends
+        on the distance travelled by the sound wave between the source and the receiver.
+
+        Parameters
+        ----------
+        distance : float
+            Distance travelled by the sound wave, in meters
+        numtaps : int
+            Number of coefficients of the FIR filter
+
+        Returns
+        -------
+        np.ndarray
+            1D array containing `numtaps` FIR filter coefficients modelling air absorption
+        """
+
+        f = np.linspace(0, self.fs, num = 50)
         norm_freqs = f / max(f)
-        alpha = 10 ** (-abs_coeffs * distance / 20)     # Convert coeffs in dB to linear scale
+        alpha = 10 ** (-self.airAbsorptionCoefficients * distance / 20)     # Convert coeffs in dB to linear scale
         filt_coeffs = scipy.signal.firwin2(numtaps, norm_freqs, alpha)
         
         return filt_coeffs
-    
-    # Compute angle dependent asphalt reflection filters for a set of angles [-89,89]deg, with 
-    # a resultion of 1deg, based on normal incidence asborption coefficients computed at frequencies freqs.
-    # Filters are stored in a table np.array([89*2+1, ntaps]), where ntaps is the desired filter length
-    def compute_angle_reflection_table(self, absorption_coeffs: np.ndarray, freqs: np.ndarray, ntaps: int) -> np.ndarray:
-        theta_vector = np.arange(-89,89,1)
+
+    def _compute_angle_reflection_table(self, ntaps: int = 11) -> np.ndarray:
+        """
+        Computes the coefficients of the FIR filters modelling asphalt reflection, at a set of different sound wave 
+        incidence angles, and stores them in a table. Each row of the table contains the `ntaps` FIR filter corresponding
+        to a different incidence angle. The set of angles is defined in `self._theta_vector`.
+
+        The filter coefficients are computed using the `scipy.signal.firwin2` method, given the reflection coefficients
+        computed in the frequency bands `center_freqs`, defined in the instance attribute `road_material`. 
+        The reflection coefficients are derived from the  absorption coefficients of the road surface, defined
+        in the instance attribute `road_material`. The road surface is assumed to be  locally reactive, meaning 
+        that its impedance Z does not depend on the incidence angle.
+
+        Parameters
+        ----------
+        ntaps : int
+            Number of FIR filter coefficients, must be odd
+
+        Returns
+        -------
+        np.ndarray
+            2D Array with len(self._theta_vector) rows, each containing `ntaps` FIR filter coefficients corresponding
+            to each angle defined in `self._theta_vector`
+        """
+        
         Z0 = self.Z0
-        refl = np.sqrt(1 - absorption_coeffs)
+        refl = np.sqrt(1 - np.array(self.road_material.absorption["coeffs"]))
+        
+        # The impedance does not depend on the angle of incidence -> locally reactive surface
         Z = - Z0 * (refl + 1) / (refl-1)
-        b_fir = np.zeros((len(theta_vector), ntaps))
+        
+        b_fir = np.zeros((len(self._theta_vector), ntaps))
         
         # Compute filters coefficients for all thetas
-        for idx, theta in enumerate(theta_vector):
-            # Absolute value is taken to prevent R from going below zero. In Kuttruff, "Acoustics - an Introduction" the modulus of R is used
-            # to compute reflections, and with our procedure we are not computing the imaginary part (see Nijl et al. Absorbing surfaces... 2006), 
-            # so it is coherent.
+        for idx, theta in enumerate(self._theta_vector):
+            # Absolute value is taken to prevent R from going below zero. 
+            # In Kuttruff, "Acoustics - an Introduction" the modulus of R is used
+            # to compute reflections, and with this procedure we are not computing the 
+            # imaginary part (see Nijl et al. Absorbing surfaces... 2006), so the two approaches are coherent.
             R = np.abs((Z * np.cos(math.radians(theta)) - Z0) / (Z * np.cos(math.radians(theta)) + Z0))
-            b_fir[idx] = scipy.signal.firwin2(ntaps, freqs / 4000, R)
+            b_fir[idx] = scipy.signal.firwin2(ntaps, np.array(self.road_material.absorption["center_freqs"]) 
+                / (self.fs/2), R)
         
         return b_fir
     
-    def get_asphalt_reflection_filter(self, theta: float, b_fir: np.ndarray, theta_vector: np.ndarray) -> np.ndarray:
-        idx = np.where(theta_vector == np.round(theta))
-        idx = idx[0][0]
-        return b_fir[idx]
+    def _get_asphalt_reflection_filter(self, theta: float) -> np.ndarray:
+        """
+        Select the asphalt reflection filter from the pre-computed table given the incidence angle of the 
+        sound wave hitting the road surface, in degrees. For the table lookup, the incidence angle is 
+        rounded to the closest integer in the range defined in `self._theta_vector` attribute.
 
-    def _compute_sound_attenuation(distance: float) -> float:
+        Parameters
+        ----------
+        theta : float
+            Incidence angle of the sound wave hitting the road surface, in degrees
+
+        Returns
+        -------
+        np.ndarray
+            1D Array containing asphalt reflection filter coefficients computed at angle theta
+        """
+
+        idx = np.where(self._theta_vector == np.round(theta))
+        idx = idx[0][0]
+        return self.asphaltReflectionFilterTable[idx]
+
+    def _compute_sound_attenuation(self, distance: float) -> float:
+        """
+        Computes the attenuation of sound due to its propagation in the empty space. This attenuation depends
+        only on the distance between the source and the receiver and is computed assuming a spherical propagation
+        model.
+
+        Parameters
+        ----------
+        distance : float
+            Relative distance between the sound source and the receiver
+
+        Returns
+        -------
+        float
+            Attenuation factor
+        """
         return 1 / (4 * np.pi * distance)
     
-    # Computes distance between source and receiver and delay in seconds.
-    # Arguments are source position, receiver position and speed of sound in air
-    def _compute_delay(self, src_pos, mic_pos, c):
+    def _compute_delay(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> tuple[float, float]:
+        """
+        Computes the distance between the source and the microphone, and the time needed by the sound to travel 
+        from source to microphone, given their distance and the speed of sound in air.
+
+        Parameters
+        ----------
+        src_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the source
+        mic_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the microphone
+
+        Returns
+        -------
+        Tuple[float, float]
+            Tuple containing the distance between source and microphone (in meters) and the time delay (in seconds)
+        """
+
         d = np.sqrt(np.sum((src_pos - mic_pos)) ** 2)
-        tau = d / c
+        tau = d / self.c
         return d, tau
     
-    # Compute incidence angle of sound wave on road surface, given source and microphone position
-    def _compute_angle(self, src_pos, mic_pos):
+    def _compute_angle(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> float:
+        """
+        Computes the incidence angle of the sound wave travelling from the source to the road surface, along the
+        reflected path connecting the source to the microphone with a single reflection generated by the road.
+
+        Parameters
+        ----------
+        src_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the source
+        mic_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the microphone
+
+        Returns
+        -------
+        float
+            Incidence angle of sound wave travelling from source to road surface along reflected path, in radians
+        """
+
         # Distance between image and microphone
-        dist = np.sqrt(np.sum(((src_pos - np.array([0, 0 , 2*src_pos[2]]) - mic_pos))) ** 2)
+        dist = np.sqrt(np.sum(((src_pos - np.array([0, 0 , 2*src_pos[2]])) - mic_pos) ** 2))
         # Incidence angle
-        theta = np.arcsin(dist / (src_pos[2] + mic_pos[2]))
+        theta = np.arcsin((src_pos[2] + mic_pos[2]) / dist)
         return theta

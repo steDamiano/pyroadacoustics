@@ -57,6 +57,9 @@ class Environment:
     air_absorption_coefficients: np.ndarray
         1D Array containing the air absorption coefficients computed at a set of 50 equispaced frequencies
         between 0 and `fs/2`
+    Z0: float
+        Value for air impedance computed at temperature `temperature`, pressure `pressure` and with 
+        corresponding speed of sound `c`
 
     Methods
     -------
@@ -79,6 +82,7 @@ class Environment:
         Runs the simulation and retrieves the signal received at each microphone in the `MicrophoneArray`
 
     """
+
     def __init__(
             self,
             fs: int = 8000,
@@ -137,10 +141,14 @@ class Environment:
         if rel_humidity < 0 or rel_humidity > 100:
             raise ValueError("Humidity must be greater than zero and lower than 100")
         self.rel_humidity = rel_humidity
+        
+        if road_material.absorption["center_freqs"][-1] != self.fs / 2:
+            road_material.extrapolate_coeffs_to_spectrum(fs = self.fs)
         self.road_material = road_material
         
         self.c = self._compute_speed_sound(temperature)
         self.air_absorption_coefficients = self._compute_air_absorption_coefficients()
+        self.Z0 = self._compute_air_impedance(self.temperature, self.pressure, self.c)
     
     def set_road_material(self, absorption: str or dict) -> None:
         """
@@ -402,9 +410,9 @@ class Environment:
             # Select Active Microphone
             active_mic = self.mic_array.mic_positions[m]
         
-            # Instantiate Simulator Manager or call instance
-            manager = SimulatorManager(environment = self, active_microphone = active_mic, source = self.source, 
-            airAbsorptionFilters = self.air_absorption_coefficients)
+            # Instantiate Simulator Manager
+            manager = SimulatorManager(c = self.c, fs = self.fs, Z0 = self.Z0, road_material = self.road_material,
+                airAbsorptionCoefficients = self.air_absorption_coefficients)
 
             # Define simulation loop
             _temp = manager.initialize(self.source.position, active_mic)
