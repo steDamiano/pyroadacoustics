@@ -155,11 +155,11 @@ class SimulatorManager:
         # Compute incidence angle
         theta = self._compute_angle(src_pos, mic_pos)
 
-        # Compute distance between src and reflection point
+        # Compute distance and delay between src and reflection point
         a = src_pos[2] / np.sin(theta)
         tau_1 = a / self.c
         
-        # Compute distance between reflection point and microphone
+        # Compute distance and delay between reflection point and microphone
         b = src_pos[2] / np.sin(theta)
         tau_2 = b / self.c
 
@@ -167,18 +167,54 @@ class SimulatorManager:
         self.primaryDelLine.set_delays(np.array([tau * self.fs, tau_1 * self.fs]))
         self.secondaryDelLine.set_delays(np.array([tau_2 * self.fs]))
         
-
-    # Compute new delays given acutal positions of src and microphone.
-    # Update coefficients of filters with new positions.
-    # Produce output value.
     def update(self, src_pos: np.ndarray, mic_pos: np.ndarray, signal_sample: float) -> float:
-        # Compute direct distance and delay
-        d, tau = self._compute_delay(src_pos, mic_pos, self.c)
+        """
+        This method is used to compute the output of one instant of the simulation. It takes as inputs the instantaneous
+        positions of the source and of the microphone used in the current simulation, and the sample of the source
+        signal emitted at the same instant. It then performs the update of the `DelayLine` objects, writing the new 
+        sample `signal_sample` on the primary line, and computes the relative distances and delays between the source,
+        the road surface at the incidence point, and the microphone, together with the incidence angle. According to
+        these delays, the `DelayLine` read pointers positions are updated. Then, the output sample received at the
+        microphone position is computed as a sum of two components:
+        * the direct component of the sound field, filtered with the air absorption filter depending on the distance
+        between the source and the microphone, and attenuated depending on the travelled distance;
+        * the reflected component: the reflected sound is analyzed using a cascade of 3 filters and two multiplications.
+        The sound wave produced travels from the source to the road surface, along the reflected trajectory computed 
+        using the principles of geometrical acoustics. This path is represented by a propagation delay, a filter that
+        models the air absorption depending on the distance between the source and the incidence point, and an
+        attenuation factor depending on the same travelled distance. At the incidence point, the sound wave is 
+        filtered with a second FIR filter representing the asphalt reflection, depending on the road surface material 
+        and on the incidence angle. After the reflection, the sound wave travels from the reflection point to the 
+        microphones, along a path modeled by a second delay element, a second air absorption filter depending on the
+        distance between reflection point and microphone, and a second attenuation factor depending on the same
+        distance. 
 
+        The two components are summed to produce the out sample, that is returned by this update function. All the 
+        filtering operations are performed in the time domain, using the convolution between the considered signals 
+        and the FIR filters.
+
+        Parameters
+        ----------
+        src_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the sound source
+        mic_pos : np.ndarray
+            1D array containing the cartesian coordinates [x,y,z] denoting the position of the microphone
+        signal_sample : float
+            Sample produced by the source at the considered instant
+
+        Returns
+        -------
+        float
+            Sample of the signal recorded by the cosidered microphone at the given time instant
+        """
+
+        # Compute direct distance and delay
+        d, tau = self._compute_delay(src_pos, mic_pos)
+        
         # Compute incidence angle
         theta = self._compute_angle(src_pos, mic_pos)
 
-        # Compute distance between src and reflection point
+        # Compute distance and delay between src and reflection point
         a = src_pos[2] / np.sin(theta)
         tau_1 = a / self.c
         
@@ -190,26 +226,21 @@ class SimulatorManager:
         y_primary = self.primaryDelLine.update_delay_line(signal_sample, np.array([tau * self.fs, 
             tau_1 * self.fs]))
 
-        # Store the read samples in a circular array to be used for filtering with air abs and asphalt refl
-        self._read1Buf = y_primary[0]
-        self._read2Buf = y_primary[1]
-        # self._read3Buf = y_secondary
-
-        self._readBufPtr +=1
-        if self._readBufPtr >= 20:
-            self._readBufPtr -= 20
+        # Store the read samples in a circular array for filtering with air absorption and asphalt reflection
+        self._read1Buf[self._readBufPtr] = y_primary[0]
+        self._read2Buf[self._readBufPtr] = y_primary[1]
         
         ### DIRECT PATH ###
 
+        # Attenuation due to air absorption
+        filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
+        sample_eval = 0
+        for ii in range(len(filt_coeffs)):
+            sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        
         # Attenuation due to distance
         att = self._compute_sound_attenuation(d)
 
-        # Attenuation due to air absorption
-        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, d, numtaps = 11)
-        sample_eval = 0
-        for ii in range(10):
-            sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
-        
         # Direct Path Output Sample
         y_dir =  att * sample_eval
 
@@ -217,46 +248,56 @@ class SimulatorManager:
 
         # 1. From Source to Road Surface
 
-        # Attenuation due to distance
-        att = self._compute_sound_attenuation(a)
-        
         # Attenuation due to air absorption
-        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, a, numtaps = 11)
+        filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
 
         sample_eval = 0
-        for ii in range(10):
+        for ii in range(len(filt_coeffs)):
             sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        
+
+        # Attenuation due to distance
+        att = self._compute_sound_attenuation(a)
         sample_eval = att * sample_eval
+        
+        # Write output of first filter in buffer, to be able to apply second filter in cascade
         self._read3Buf[self._readBufPtr] = sample_eval
 
         # 2. Asphalt Absorption
-        asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - theta, 
-            self.asphaltReflectionFilterTable, np.array([-89, 89]))
+        asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta))
         
         sample_eval = 0
-        for ii in range(10):
+        for ii in range(len(asphalt_filter_coeffs)):
             sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
         
         
         # 3. Second path in air --> Secondary Delay Line
-        y_secondary = self.primaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
+        y_secondary = self.secondaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
+
+        # Store output of secondary delay line in buffer for cascade air abs filter
         self._read4Buf[self._readBufPtr] = y_secondary
+
         # 4. From Road Surface to Receiver
 
-        # Attenuation due to distance
-        att = self._compute_sound_attenuation(b)
-
         # Attenuation due to air absorption
-        # alpha = compute_air_absorption_coeffs(T, p_s, hrar, F)
-        # alpha = 10 ** (-alpha * drefl / 20)     # Convert coeffs in dB to linear scale
-        filt_coeffs = self._compute_air_absorption_filter(self.airAbsorptionCoefficients, b, numtaps = 11)
+        filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
 
         sample_eval = 0
         for ii in range(10):
             sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        
+        # Attenuation due to distance
+        att = self._compute_sound_attenuation(b)
+
         y_refl = att * sample_eval
 
+        # Compute received sample as sum of direct and reflected path outputs
         y_received = y_dir + y_refl
+
+        # Update read pointer of buffers, and ensure circularity
+        self._readBufPtr +=1
+        if self._readBufPtr >= 20:
+            self._readBufPtr -= 20
 
         return y_received
     

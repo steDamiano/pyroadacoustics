@@ -106,7 +106,22 @@ class SimulatorManagerTest(unittest.TestCase):
         self.assertAlmostEqual(manager.primaryDelLine.read_ptr[0], 48000 - 2 / env.c * env.fs)
         self.assertAlmostEqual(manager.primaryDelLine.read_ptr[1], 48000 - np.sqrt(2) / env.c * env.fs)
         self.assertAlmostEqual(manager.secondaryDelLine.read_ptr[0], 48000 - np.sqrt(2) / env.c * env.fs)
+    
+    def test_update(self):
+        # Initialization
+        src_pos = np.array([3., 5., 1.])
+        mic_pos = np.array([[0,0,1]])
         
+        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
+        env.add_source(position=src_pos)
+        env.add_microphone_array(mic_pos)
+        
+        y = env.simulate()
+
+        plt.plot(y)
+        plt.show()
+        # for i in range(10):
+        #     y_received = manager.update(src_pos, mic_pos[0], 1)
 
 if __name__ == '__main__':
     unittest.main()

@@ -415,11 +415,13 @@ class Environment:
                 airAbsorptionCoefficients = self.air_absorption_coefficients)
 
             # Define simulation loop
-            _temp = manager.initialize(self.source.position, active_mic)
+            manager.initialize(self.source.position, active_mic)
 
             # Compute output samples
             for n in range(N):
                 signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
+        
+        return signals
     
     def _compute_air_absorption_coefficients(self, nbands: int = 50) -> np.ndarray:
         """
