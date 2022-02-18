@@ -4,7 +4,7 @@ import unittest
 
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.SoundSource import SoundSource
+from pyroadacoustics.soundSource import SoundSource
 
 class SoundSourceTest(unittest.TestCase):
     def test_instantiate(self):

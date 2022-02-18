@@ -2,8 +2,8 @@ import numpy as np
 import scipy.signal
 import math
 
-from src.DelayLine import DelayLine
-from src.Material import Material
+from .delayLine import DelayLine
+from .material import Material
 
 class SimulatorManager:
     """

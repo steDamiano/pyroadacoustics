@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.Material import Material
+from pyroadacoustics.material import Material
 
 class MaterialTest(unittest.TestCase):
     # Test object instantiation 

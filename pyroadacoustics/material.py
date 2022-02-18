@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import json
 
 # Load materials data from json database and store in dict
-with open('src/materials.json') as database_materials:
+with open('pyroadacoustics/materials.json') as database_materials:
     materials_dict = json.load(database_materials)
 
 

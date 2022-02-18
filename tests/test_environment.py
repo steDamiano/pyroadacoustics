@@ -5,8 +5,8 @@ import os, sys
 import scipy.signal
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.Material import Material
-from src.Environment import Environment
+from pyroadacoustics.material import Material
+from pyroadacoustics.environment import Environment
 
 class EnvironmentTest(unittest.TestCase):
     def test_instantiate(self):

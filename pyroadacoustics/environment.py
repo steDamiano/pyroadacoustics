@@ -2,10 +2,10 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-from src.Material import Material
-from src.SoundSource import SoundSource
-from src.MicrophoneArray import MicrophoneArray
-from src.SimulatorManager import SimulatorManager
+from .material import Material
+from .soundSource import SoundSource
+from .microphoneArray import MicrophoneArray
+from .simulatorManager import SimulatorManager
 
 class Environment:
     """
