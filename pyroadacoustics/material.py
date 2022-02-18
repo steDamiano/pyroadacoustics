@@ -1,9 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import json
+import os, json, io
+
 
 # Load materials data from json database and store in dict
-with open('pyroadacoustics/materials.json') as database_materials:
+_materials_database_fn = os.path.join(os.path.dirname(__file__), "materials.json")
+
+with io.open(_materials_database_fn) as database_materials:
     materials_dict = json.load(database_materials)
 
 

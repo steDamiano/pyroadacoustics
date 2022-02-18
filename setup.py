@@ -25,7 +25,7 @@ setuptools.setup(
     ],
     # package_dir={"": "src"},
     packages = ["pyroadacoustics"],
-    package_data={"pyroadacoustics": ["materials.json"]},
+    # package_data={"pyroadacoustics": ["materials.json"]},
     python_requires=">=3.7",
     install_requires=[
         "numpy",
