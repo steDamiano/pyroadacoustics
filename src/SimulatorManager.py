@@ -210,7 +210,7 @@ class SimulatorManager:
 
         # Compute direct distance and delay
         d, tau = self._compute_delay(src_pos, mic_pos)
-        
+
         # Compute incidence angle
         theta = self._compute_angle(src_pos, mic_pos)
 
@@ -407,7 +407,7 @@ class SimulatorManager:
         float
             Attenuation factor
         """
-        return 1 / (4 * np.pi * distance)
+        return 1 / (distance)
     
     def _compute_delay(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> tuple[float, float]:
         """
@@ -427,7 +427,7 @@ class SimulatorManager:
             Tuple containing the distance between source and microphone (in meters) and the time delay (in seconds)
         """
 
-        d = np.sqrt(np.sum((src_pos - mic_pos)) ** 2)
+        d = np.sqrt(np.sum((src_pos - mic_pos) ** 2))
         tau = d / self.c
         return d, tau
     

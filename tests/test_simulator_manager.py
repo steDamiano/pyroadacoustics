@@ -109,19 +109,23 @@ class SimulatorManagerTest(unittest.TestCase):
     
     def test_update(self):
         # Initialization
-        src_pos = np.array([3., 5., 1.])
+        src_pos = np.array([0., 2, 1.])
         mic_pos = np.array([[0,0,1]])
         
         env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
+        manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
+
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
+        manager.initialize(src_pos, mic_pos[0])
+
+        y_received = np.zeros(1000)
+        for i in range(1000):
+            y_received[i] = manager.update(src_pos, mic_pos[0], 1)
+            print(y_received[i])
+
+        self.assertTrue(np.allclose(manager.primaryDelLine.delay_line[0:1000], np.ones(1000)))
+        self.assertTrue(max(y_received) < 1)
         
-        y = env.simulate()
-
-        plt.plot(y)
-        plt.show()
-        # for i in range(10):
-        #     y_received = manager.update(src_pos, mic_pos[0], 1)
-
 if __name__ == '__main__':
     unittest.main()

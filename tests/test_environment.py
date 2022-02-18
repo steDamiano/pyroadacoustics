@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import unittest
 import os, sys
+import scipy.signal
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.Material import Material
@@ -150,7 +151,30 @@ class EnvironmentTest(unittest.TestCase):
         env.add_microphone_array(np.array([[0.,0.,0.],[0.,0.5,0.],[0.,1.,0]]))
         env.add_source(position = np.array([3, 5, 0]), trajectory_points = np.array([[3,5,0], [3,-5,0], [0,-5,0]]), 
             source_velocity = np.array([5, 2]))
-        env.plot_environment()
+        # env.plot_environment()
+    
+    def test_simulation(self):
+        src_signal = np.random.randn(1000)
+        env = Environment()
+        env.add_source(position = np.array([3, 5, 1]), trajectory_points = np.array([[3,10,1], [3,-20,1]]), 
+            source_velocity = np.array([5]), signal = src_signal)
+        env.add_microphone_array(np.array([[0.,0.,1.],[0.,0.5,1.],[0.,1.,1.]]))
+
+        signals = env.simulate()
+
+        # plot signals received at the 3 microphones
+        plt.figure()
+        fig, ax = plt.subplots(3,1)
+        ax[0].plot(signals[0,100:150])
+        ax[1].plot(signals[1,100:150])
+        ax[2].plot(signals[2,100:150])
+        plt.show()
+
+        plt.figure()
+        ff, tt, Sxx = scipy.signal.spectrogram(1 * signals[0,:], 8000)
+        plt.pcolormesh(tt, ff, Sxx, shading = 'auto')
+        plt.show()
+
 
 if __name__ == '__main__':
     unittest.main()
