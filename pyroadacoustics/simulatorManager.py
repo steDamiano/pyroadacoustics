@@ -59,6 +59,12 @@ class SimulatorManager:
         2D array containing the asphalt reflection filters computed at different reflection angles. The filters
         have a fixed number of taps ntaps = 10, and their impulse response at a set of angles from -89 to + 89 degrees
         is pre-computed and stored in this table in order to speed up the execution.
+    simulation_params: dict
+        Dictionary containing the keys:
+        * `interp_method`: str, defines the interpolation method used in the delay line interpolated reads
+        * `include_reflected_path`: bool, if `True` the received sample includes both the direct and the reflected sound,
+        otherwise it includes just the direct sound
+        * `include_air_abosrption`: bool, if `True` the air absorption is included in the simulation
 
     Methods
     ------
@@ -74,9 +80,14 @@ class SimulatorManager:
             self,
             c: float,                       # speed of sound in air 
             fs: int,                        # sampling frequency
-            Z0: int,                      # characteristic impedance of air
+            Z0: int,                        # characteristic impedance of air
             road_material: Material,        # Absorption properties of road surface
             airAbsorptionCoefficients: np.ndarray,
+            simulation_params: dict = {
+                "interp_method": "Sinc",
+                "include_reflected_path": True,
+                "include_air_absorption": True,
+            },
         ) -> None:
         """
         Creates a `SimulatorManager` object containing all the methods and attributes required to run the acoustic
@@ -95,15 +106,22 @@ class SimulatorManager:
         Parameters
         ----------
         c : float
-            _description_
+            Speed of sound in the air
         fs: int
-            _description_
+            Sampling frequency used in the simulation
         Z0: float
-            _description_
+            Characteristic impedance of the air at the chosen environmental conditions (e.g. T, p)
         road_material: Material
-            _description_
+            Material object defining the absorption and reflection properties of the road surface
         airAbsorptionCoefficients: np.ndarray
-            _description_
+            1D Array containing the air absorption coefficients computed in the defined frequency bands at the chosen 
+            environmental conditions (e.g. T, p, rel. humidity)
+        
+        Raises
+        ------
+        KeyError:
+            If simulation_params does not contain keys `interp_method`, `include_reflected_path` and 
+            `include_air_absorption`.
         """
         self.c = c
         self.fs = fs
@@ -111,16 +129,29 @@ class SimulatorManager:
         self.road_material = road_material
         self.airAbsorptionCoefficients = airAbsorptionCoefficients
 
+        # Frequency bands for air absorption filter
+        F = np.linspace(0, self.fs, num = 50)
+        self.norm_freqs = F / max(F)
+
+        # Define simulation parameters
+        if ("interp_method" not in simulation_params or "include_reflected_path" 
+            not in simulation_params or "include_air_absorption" not in simulation_params):
+            raise KeyError("simulation_params must be a dict with keys 'interp_method' (string),"
+              "'include_reflection_path' (bool) and 'include_air_absorption (bool'")
+        self.simulation_params = simulation_params
+
         # Instantiation of two delay lines used for the simulations
-        self.primaryDelLine = DelayLine(N = 48000, num_read_ptrs = 2, interpolation = 'Sinc') 
-        self.secondaryDelLine = DelayLine(N = 48000, num_read_ptrs = 1, interpolation = 'Sinc')
+        self.primaryDelLine = DelayLine(N = 48000, num_read_ptrs = 2, 
+            interpolation = self.simulation_params["interp_method"]) 
+        self.secondaryDelLine = DelayLine(N = 48000, num_read_ptrs = 1, 
+            interpolation = self.simulation_params["interp_method"])
 
         # Array containing all possible incidence angles for pre-computed reflection filter table
         self._theta_vector = np.arange(-89,89,1)
 
         # Instantiation of table containing asphalt reflection filters
         self.asphaltReflectionFilterTable = self._compute_angle_reflection_table(ntaps = 11)
-        
+       
         # Buffers to store previous data read from delay lines for filtering purpose
         self._read1Buf = np.zeros(20)
         self._read2Buf = np.zeros(20)
@@ -230,13 +261,17 @@ class SimulatorManager:
         self._read1Buf[self._readBufPtr] = y_primary[0]
         self._read2Buf[self._readBufPtr] = y_primary[1]
         
+        y_received = 0
         ### DIRECT PATH ###
 
-        # Attenuation due to air absorption
-        filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
-        sample_eval = 0
-        for ii in range(len(filt_coeffs)):
-            sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        if self.simulation_params["include_air_absorption"]:
+            # Attenuation due to air absorption
+            filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
+            sample_eval = 0
+            for ii in range(len(filt_coeffs)):
+                sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+        else:
+            sample_eval = self._read1Buf[self._readBufPtr]
         
         # Attenuation due to distance
         att = self._compute_sound_attenuation(d)
@@ -245,54 +280,62 @@ class SimulatorManager:
         y_dir =  att * sample_eval
 
         ### REFLECTED PATH ###
-
+        if self.simulation_params["include_reflected_path"]:
         # 1. From Source to Road Surface
 
-        # Attenuation due to air absorption
-        filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
+            if self.simulation_params["include_air_absorption"]:
 
-        sample_eval = 0
-        for ii in range(len(filt_coeffs)):
-            sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+                # Attenuation due to air absorption
+                filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
+
+                sample_eval = 0
+                for ii in range(len(filt_coeffs)):
+                    sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+            
+            else:
+                sample_eval = self._read2Buf[self._readBufPtr]
+            
+            # Attenuation due to distance
+            att = self._compute_sound_attenuation(a)
+            sample_eval = att * sample_eval
+            
+            # Write output of first filter in buffer, to be able to apply second filter in cascade
+            self._read3Buf[self._readBufPtr] = sample_eval
+
+            # 2. Asphalt Absorption
+            asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta))
+            
+            sample_eval = 0
+            for ii in range(len(asphalt_filter_coeffs)):
+                sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
+            
+            
+            # 3. Second path in air --> Secondary Delay Line
+            y_secondary = self.secondaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
+
+            # Store output of secondary delay line in buffer for cascade air abs filter
+            self._read4Buf[self._readBufPtr] = y_secondary
+
+            # 4. From Road Surface to Receiver
+            if self.simulation_params["include_air_absorption"]:
+                # Attenuation due to air absorption
+                filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
+
+                sample_eval = 0
+                for ii in range(10):
+                    sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+            else:
+                sample_eval = self._read4Buf[self._readBufPtr]
+            
+            # Attenuation due to distance
+            att = self._compute_sound_attenuation(b)
+
+            y_refl = att * sample_eval
+
+            # Compute received sample as sum of direct and reflected path outputs
+            y_received = y_refl
         
-
-        # Attenuation due to distance
-        att = self._compute_sound_attenuation(a)
-        sample_eval = att * sample_eval
-        
-        # Write output of first filter in buffer, to be able to apply second filter in cascade
-        self._read3Buf[self._readBufPtr] = sample_eval
-
-        # 2. Asphalt Absorption
-        asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta))
-        
-        sample_eval = 0
-        for ii in range(len(asphalt_filter_coeffs)):
-            sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
-        
-        
-        # 3. Second path in air --> Secondary Delay Line
-        y_secondary = self.secondaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
-
-        # Store output of secondary delay line in buffer for cascade air abs filter
-        self._read4Buf[self._readBufPtr] = y_secondary
-
-        # 4. From Road Surface to Receiver
-
-        # Attenuation due to air absorption
-        filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
-
-        sample_eval = 0
-        for ii in range(10):
-            sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
-        
-        # Attenuation due to distance
-        att = self._compute_sound_attenuation(b)
-
-        y_refl = att * sample_eval
-
-        # Compute received sample as sum of direct and reflected path outputs
-        y_received = y_dir + y_refl
+        y_received = y_received + y_dir
 
         # Update read pointer of buffers, and ensure circularity
         self._readBufPtr +=1
@@ -319,10 +362,8 @@ class SimulatorManager:
             1D array containing `numtaps` FIR filter coefficients modelling air absorption
         """
 
-        f = np.linspace(0, self.fs, num = 50)
-        norm_freqs = f / max(f)
         alpha = 10 ** (-self.airAbsorptionCoefficients * distance / 20)     # Convert coeffs in dB to linear scale
-        filt_coeffs = scipy.signal.firwin2(numtaps, norm_freqs, alpha)
+        filt_coeffs = scipy.signal.firwin2(numtaps, self.norm_freqs, alpha)
         
         return filt_coeffs
 
@@ -387,7 +428,7 @@ class SimulatorManager:
             1D Array containing asphalt reflection filter coefficients computed at angle theta
         """
 
-        idx = np.where(self._theta_vector == np.round(theta))
+        idx = np.where(self._theta_vector == round(theta))
         idx = idx[0][0]
         return self.asphaltReflectionFilterTable[idx]
 

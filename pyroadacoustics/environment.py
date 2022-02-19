@@ -63,22 +63,27 @@ class Environment:
 
     Methods
     -------
-    get_road_material(self, absorption):
+    set_road_material(absorption):
         Assign to the scene the material of the road surface, by selecting it from a database or creating a new
         material based on its acoustic absorption properties
-    add_source(self, position, signal = None, trajectory = None):
+    set_simulation_params(interp_method, include_reflection, include_air_absorption):
+        Sets the parameters to be used in the simulation:
+        * `interp_method`: interpolation method used to perform interpolated reads from delay line
+        * `include_reflection`: if `False` only direct sound is simulated, if `True` also reflected path is included
+        * `include_air_absorption`: if `True` effect of air absorption is included, if `False` it is neglected
+    add_source(position, signal = None, trajectory = None):
         Creates a `SoundSource` by defining its initial position, its signal and (if it is a moving source) its
         trajectory, and inserts it into the acoustic scene
-    add_background_noise(self, signal, SNR):
+    add_background_noise(signal, SNR):
         Generates a background noise signal to be added to the signals generated at the microphone positions during
         the simulation. The noise level is defined by setting its SNR with respect to the source signal when the 
         source is closest to the microphone array, while travelling on its trajectory
-    add_microphone_array(self, mic_locs):
+    add_microphone_array(mic_locs):
         Creates a `MicrophoneArray` object by defining the positions of its microphones, and inserts it into the
         acoustic scene
-    plot_environment(self):
+    plot_environment():
         Plots the position of the microphones in the `MicrophoneArray` object and the trajectory of the `SoundSource`
-    simulate(self):
+    simulate():
         Runs the simulation and retrieves the signal received at each microphone in the `MicrophoneArray`
 
     """
@@ -92,7 +97,8 @@ class Environment:
             temperature: float = 20,
             pressure: float = 1,
             rel_humidity: int = 50,
-            road_material: Material = Material('average_asphalt')
+            road_material: Material = Material('average_asphalt'),
+
         ) -> None:
         """
         Creates an Environment object by setting the simulation scene parameters. The Environment is defined by
@@ -145,6 +151,13 @@ class Environment:
         if road_material.absorption["center_freqs"][-1] != self.fs / 2:
             road_material.extrapolate_coeffs_to_spectrum(fs = self.fs)
         self.road_material = road_material
+
+        simulation_params: dict = {
+                "interp_method": "Sinc",
+                "include_reflected_path": True,
+                "include_air_absorption": True,
+        }
+        self.simulation_params = simulation_params
         
         self.c = self._compute_speed_sound(temperature)
         self.air_absorption_coefficients = self._compute_air_absorption_coefficients()
@@ -177,6 +190,43 @@ class Environment:
             material.extrapolate_coeffs_to_spectrum(fs = self.fs)
         
         self.road_material = material
+    
+    def set_simulation_params(self, interp_method: str, include_reflection: bool, include_air_absorption: bool) -> None:
+        """
+        Function used to define a set of parameters to be used in the simulation. These parameters are:
+        * The interpolation method used for the interpolated reads from the delay lines. `Sinc` provides more
+        accuracy but has a higher computational load.
+        * The possibility to include the reflected sound path in the simulation. If it is not included, the source is
+        assumed to emit sound in the free-field and just the direct path is simulated: this reduces the computational
+        load but requires a lower computational load.
+        * The possibility to include the air absorption in the simulation. The air absorption depends on distance and is
+        implemented as a Time Varying FIR filter. The computation of its coefficients is performed at each simulation
+        instant, and implies an increase of the computational complexity. This can be neglected, leading to a decreased
+        simulation accuracy.
+
+        Parameters
+        ----------
+        interp_method : str
+            Interpolation method used to perform interpolated reads from the delay lines. Can be:
+            * `Linear`: linear interpolation, lowest computational complexity and accuracy
+            * `Lagrange`: Lagrange interpolation of order 5.
+            * `Sinc` (default): sinc interpolation using a windowed sinc filter with 11 taps. Highest accuracy and
+            computational complexity 
+        include_reflection : bool
+            Bool, if `True` (default) the simulation includes the direct sound path and the path includind the road
+            surface reflection. If `False` just the direct sound is simulated.
+        include_air_absorption : bool
+            Bool, if `True` (default), the air absorption is included in the simulation. The air absorption is modeled 
+            using a FIR filter with 11 taps, whose coefficients depend on the distance between source and receiver 
+            and thus are updated at each simulation instant. To reduce the computational load, can be neglected 
+            by setting this to `False`.
+        """
+        simulation_params = {
+                "interp_method": interp_method,
+                "include_reflected_path": include_reflection,
+                "include_air_absorption": include_air_absorption,
+            }
+        self.simulation_params = simulation_params
     
     def add_source(self, position: np.ndarray, signal: np.ndarray = None, 
         trajectory_points: np.ndarray = None, source_velocity: np.ndarray or float = None) -> None:
@@ -412,7 +462,7 @@ class Environment:
         
             # Instantiate Simulator Manager
             manager = SimulatorManager(c = self.c, fs = self.fs, Z0 = self.Z0, road_material = self.road_material,
-                airAbsorptionCoefficients = self.air_absorption_coefficients)
+                airAbsorptionCoefficients = self.air_absorption_coefficients, simulation_params = self.simulation_params)
 
             # Define simulation loop
             manager.initialize(self.source.position, active_mic)

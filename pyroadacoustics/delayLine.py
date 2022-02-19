@@ -100,6 +100,9 @@ class DelayLine:
         self.delay_line = np.zeros(N)
         self.interpolation = interpolation
 
+        self._SINC_SMP = 11
+        self._WINDOW = np.hanning(self._SINC_SMP)
+
     def set_delays(self, delay: np.ndarray) -> None:
         """
         Sets initial delays between the write pointer and each of the read pointers in the delay line.
@@ -235,15 +238,15 @@ class DelayLine:
 
         elif method == 'Sinc':
             # Define windowed sinc filter paramters and compute coefficients
-            sinc_samples = 11
-            sinc_window = np.hanning(sinc_samples)
-            h_sinc = self._frac_delay_sinc(sinc_samples, sinc_window, d)
+            # sinc_samples = 11
+            # sinc_window = np.hanning(sinc_samples)
+            h_sinc = self._frac_delay_sinc(self._SINC_SMP, self._WINDOW, d)
             # TODO: Implement sinc lookup with linear interpolation to speed up computations
             
             # Convolve signal with filter
             out = 0
-            for i in range(0, sinc_samples):
-                out = out + h_sinc[i]*self.delay_line[np.mod(read_ptr_integer + i - math.floor(sinc_samples/2), self.N)]
+            for i in range(0, self._SINC_SMP):
+                out = out + h_sinc[i]*self.delay_line[np.mod(read_ptr_integer + i - math.floor(self._SINC_SMP/2), self.N)]
             return out
 
         else:
