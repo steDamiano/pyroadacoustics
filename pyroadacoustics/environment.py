@@ -262,6 +262,7 @@ class Environment:
         source
             The created `SoundSource` object is assigned to the corresponding attribute
         """
+        #TODO: Normalize source signal
         if self.source is not None:
             raise RuntimeError("Cannot insert more than one sound source")
         is_static = False

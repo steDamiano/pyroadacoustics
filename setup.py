@@ -8,7 +8,7 @@ setuptools.setup(
     version="0.0.1",
     author="Stefano Damiano",
     author_email="stefano.damiano@esat.kuleuven.be",
-    description="A package for simulating the sound propagation on a road scenario",
+    description="A package for simulating the sound propagation in a road scenario",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/steDamiano/outdoorSimulator",
@@ -23,9 +23,7 @@ setuptools.setup(
         "License :: To be defined :: To be defined",
         "Operating System :: OS Independent",
     ],
-    # package_dir={"": "src"},
     packages = ["pyroadacoustics"],
-    # package_data={"pyroadacoustics": ["materials.json"]},
     python_requires=">=3.7",
     install_requires=[
         "numpy",

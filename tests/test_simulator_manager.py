@@ -138,7 +138,7 @@ class SimulatorManagerTest(unittest.TestCase):
             "include_reflected_path": True,
             "include_air_absorption": True,
         }
-        env.set_simulation_params("Linear", True, False)
+        env.set_simulation_params("Sinc", True, True)
 
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients, 
             env.simulation_params)
