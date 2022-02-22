@@ -56,7 +56,7 @@ class DelayLine:
             self, 
             N = 48000,
             num_read_ptrs = 1,
-            interpolation = 'Linear',
+            interpolation = 'Allpass',
         ):
         """
         Creates a Delay Line object as a `ndarray` of N samples, with one write pointer, M read pointers and
@@ -74,8 +74,9 @@ class DelayLine:
             * Linear: linear interpolation
             * Lagrange: Lagrange interpolation with order 5
             * Sinc: sinc interpolation with filter length of 11 taps
+            * Allpass: first order all pass interpolator
             
-            By default: 'Linear'
+            By default: 'Allpass'
         
         Raises
         ------
@@ -91,8 +92,9 @@ class DelayLine:
             raise ValueError("Delay Line size must be greater than zero.")
         if num_read_ptrs <= 0:
             raise ValueError("Number of read pointers must be greater than zero.")
-        if interpolation != 'Linear' and interpolation != "Lagrange" and interpolation != "Sinc":
-            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, or `Sinc`")
+        if (interpolation != 'Linear' and interpolation != "Lagrange" and
+            interpolation != 'Allpass' and interpolation != "Sinc"):
+            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, `Allpass` or `Sinc`")
 
         self.N = N
         self.write_ptr = 0
@@ -102,6 +104,8 @@ class DelayLine:
 
         self._SINC_SMP = 11
         self._WINDOW = np.hanning(self._SINC_SMP)
+
+        self._ya_alt = np.zeros(len(self.read_ptr))    # Initial buffer parameter for all-pass interpolation
 
     def set_delays(self, delay: np.ndarray) -> None:
         """
@@ -170,11 +174,11 @@ class DelayLine:
 
         for i in range(len(self.read_ptr)):
             # Compute interpolated read position (fractional delay)
-            rpi = int(np.floor(self.read_ptr[i]))
+            rpi = math.floor(self.read_ptr[i])
             frac_del = self.read_ptr[i] - rpi
         
             # Produce output with interpolated read
-            y[i] = self._interpolated_read(rpi, frac_del, self.interpolation)
+            y[i] = self._interpolated_read(rpi, frac_del, self.interpolation, i)
 
             # Update read pointer position
             self.read_ptr[i] = self.write_ptr - delay[i]
@@ -187,7 +191,7 @@ class DelayLine:
                 self.read_ptr[i] -= self.N
         return y
 
-    def _interpolated_read(self, read_ptr_integer: int, d: float, method: str = 'Linear') -> float:
+    def _interpolated_read(self, read_ptr_integer: int, d: float, method: str = 'Allpass', rptr_idx: int = 0) -> float:
         """
         Produce interpolated read from delay line. Read pointer position is given to this function as an
         integer part (`read_ptr_integer`) and a fractional part (`d`) in [0,1]. The interpolation is 
@@ -207,6 +211,10 @@ class DelayLine:
             using an FIR filter
             * Sinc: sinc interpolation, implemented using windowed truncated sinc FIR filter with 11 taps. Window
             and number of taps can be modified in this function
+            * Allpass: first order all pass interpolator, uses 2 neighbouring samples
+        rptr_idx: int
+            Index of the read pointer that is currently being used to perform the read. Needed to store the value of
+            the previous sample for each pointer, in case allpass filter is used
 
         Returns
         -------
@@ -216,7 +224,7 @@ class DelayLine:
         Raises
         ------
         ValueError:
-            If `method` is neither `Linear`, nor `Lagrange`, nor `Sinc`
+            If `method` is neither `Linear`, nor `Lagrange`, nor `Sinc`, nor `Allpass`
         """
         
         # TODO Vectorization to speed up convolution
@@ -235,6 +243,12 @@ class DelayLine:
         elif method == 'Linear':
             # Linear Interpolation formula
             return d * self.delay_line[np.mod(read_ptr_integer + 1, self.N)] + (1 - d) * self.delay_line[read_ptr_integer]
+        
+        elif method == 'Allpass':
+            y = self.delay_line[read_ptr_integer] + d * (self.delay_line[np.mod(read_ptr_integer + 1, self.N)] 
+                - self._ya_alt[rptr_idx])
+            self._ya_alt[rptr_idx] = y
+            return y
 
         elif method == 'Sinc':
             # Define windowed sinc filter paramters and compute coefficients
@@ -250,7 +264,7 @@ class DelayLine:
             return out
 
         else:
-            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, or `Sinc`")
+            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, `Allpass` or `Sinc`")
     
     def _frac_delay_lagrange(self, order: int, delay: float) -> np.ndarray:
         """
