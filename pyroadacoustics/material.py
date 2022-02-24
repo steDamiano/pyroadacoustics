@@ -115,17 +115,21 @@ class Material:
         
         coeffs = self.absorption["coeffs"]
         freqs = self.absorption["center_freqs"]
-
-        # Comment to remove dummy point at 8kHz
-        if freqs[-1] <= fs / 2:
-            # Add dummy coefficient at 8kHz -> assumption that absorption gets high values at high frequencies
-            freqs = np.append(freqs, fs)
-            coeffs = np.append(self.absorption["coeffs"], 0.3)
         
-        model_abs = np.polyfit(freqs, coeffs, interp_degree)
+        # Transform in log-domain to perform interpolation
+        log_freqs = np.log(freqs)
+        log_coeffs = np.log(coeffs)
+        log_model = np.polyfit(log_freqs, log_coeffs, interp_degree)
+        
+        # Define new frequency spectrum
         full_spectrum = np.linspace(0, 1, n_bands) * fs / 2
-        estimated_abs_coeffs = np.polyval(model_abs, full_spectrum)
+        full_spectrum[0] = 0.001   # Introduce small variation on first coeffs to perform polyval
         
+        # Compute interpolated coeffs
+        log_estimated_abs_coeffs = np.polyval(log_model, np.log(full_spectrum))
+        estimated_abs_coeffs = np.exp(log_estimated_abs_coeffs)
+        full_spectrum[0] = 0   # Restore original full_spectrum
+
         # Clip between 0 and 1
         estimated_abs_coeffs[estimated_abs_coeffs < 0.0] = 0.0
         estimated_abs_coeffs[estimated_abs_coeffs > 1.0] = 1.0
@@ -145,6 +149,6 @@ class Material:
         plt.figure()
         plt.plot(self.absorption["center_freqs"], self.absorption["coeffs"])
         plt.title('Absorption Coefficients Road Surface')
-        plt.ylabel(r'$\alpha')
+        plt.ylabel(r'$\alpha$')
         plt.xlabel('f [Hz]')
         plt.show()

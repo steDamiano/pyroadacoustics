@@ -42,7 +42,7 @@ class MaterialTest(unittest.TestCase):
     def test_extrapolation(self):
 
         # Test number of bands
-        material = Material('m4_asphalt')
+        material = Material('average_asphalt')
         coeffs = material.extrapolate_coeffs_to_spectrum(n_bands=50)
         self.assertEqual(len(coeffs), 50)
         # plt.figure()
@@ -50,6 +50,7 @@ class MaterialTest(unittest.TestCase):
         # plt.show()
         
         # Test interpolation method
+        material = Material('average_asphalt')
         coeffs = material.extrapolate_coeffs_to_spectrum(interp_degree=1)
         self.assertGreaterEqual(coeffs.all(), 0)
         self.assertLessEqual(coeffs.all(), 1)
@@ -58,13 +59,14 @@ class MaterialTest(unittest.TestCase):
         # plt.show()
 
         # Test change in fs
+        material = Material('average_asphalt')
         fs_test = 96000
         coeffs = material.extrapolate_coeffs_to_spectrum(interp_degree=2, fs = fs_test)
         self.assertAlmostEqual(material.absorption["center_freqs"][-1], fs_test / 2)
 
     def test_plot(self):
-        material = Material('m4_asphalt')
-        material.extrapolate_coeffs_to_spectrum(interp_degree=2)
+        material = Material('average_asphalt')
+        material.extrapolate_coeffs_to_spectrum(interp_degree=1)
         material.plot_absorption_coeffs()
 
 if __name__ == '__main__':
