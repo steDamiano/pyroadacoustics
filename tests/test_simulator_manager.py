@@ -64,9 +64,12 @@ class SimulatorManagerTest(unittest.TestCase):
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
         table = manager.asphaltReflectionFilterTable
-        self.assertTrue(np.allclose(np.array([6.68434673e-05, 6.89725198e-05, 8.77270776e-04, 1.10158154e-03,
-            1.79727107e-02, 9.05203068e-01, 1.79727107e-02, 1.10158154e-03,
-            8.77270776e-04, 6.89725198e-05, 6.68434673e-05]), table[89], rtol=0.0001))
+        #self.assertTrue(np.allclose(np.array([6.68434673e-05, 6.89725198e-05, 8.77270776e-04, 1.10158154e-03,
+        #    1.79727107e-02, 9.05203068e-01, 1.79727107e-02, 1.10158154e-03,
+        #    8.77270776e-04, 6.89725198e-05, 6.68434673e-05]), table[89], rtol=0.0001))
+        self.assertTrue(np.allclose(np.array([2.04541068e-04, 6.54709799e-04, 1.95861242e-03, 5.61281019e-03,
+       4.46539850e-03, 9.33648475e-01, 4.46539850e-03, 5.61281019e-03,
+       1.95861242e-03, 6.54709799e-04, 2.04541068e-04]), table[89], rtol = 0.0001))
        
         # w, H_fir = scipy.signal.freqz(table[89], a=1, worN = 11)
         # plt.plot(w, abs(H_fir))
@@ -90,9 +93,9 @@ class SimulatorManagerTest(unittest.TestCase):
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
         airabs = manager._compute_air_absorption_filter(2, 11)
-        self.assertTrue(np.allclose(airabs, np.array([ 1.77146741e-05, -4.40299508e-05, 2.17979459e-04, -7.52579305e-04,
-            4.40111427e-03,  9.91346868e-01,  4.40111427e-03, -7.52579305e-04, 2.17979459e-04,
-            -4.40299508e-05,  1.77146741e-05])))
+        self.assertTrue(np.allclose(airabs, np.array([ 6.38159572e-06, -7.46507571e-06,  7.34304137e-05, -1.69455098e-04,
+        1.19788090e-03,  9.97292653e-01,  1.19788090e-03, -1.69455098e-04,
+        7.34304137e-05, -7.46507571e-06,  6.38159572e-06])))
     
     def test_set_parameters(self):
         env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)

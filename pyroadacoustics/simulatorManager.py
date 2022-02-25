@@ -130,7 +130,7 @@ class SimulatorManager:
         self.airAbsorptionCoefficients = airAbsorptionCoefficients
 
         # Frequency bands for air absorption filter
-        F = np.linspace(0, self.fs, num = 50)
+        F = np.linspace(0, self.fs / 2, num = len(airAbsorptionCoefficients))
         self.norm_freqs = F / max(F)
 
         # Define simulation parameters

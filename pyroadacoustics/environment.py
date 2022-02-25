@@ -502,7 +502,7 @@ class Environment:
         T = self.temperature + 273.15
         ps0 = 1         # Standard atmospheric pressure in atm
 
-        f = np.linspace(0, self.fs, num=nbands)     # Frequencies in which coeffs will be computed
+        f = np.linspace(0, self.fs / 2, num=nbands)     # Frequencies in which coeffs will be computed
         
         Csat = -6.8346 * math.pow(T01 / T, 1.261) + 4.6151
         rhosat = math.pow(10, Csat)

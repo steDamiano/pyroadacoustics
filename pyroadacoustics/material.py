@@ -123,7 +123,7 @@ class Material:
         
         # Define new frequency spectrum
         full_spectrum = np.linspace(0, 1, n_bands) * fs / 2
-        full_spectrum[0] = 0.001   # Introduce small variation on first coeffs to perform polyval
+        full_spectrum[0] = 0.01   # Introduce small variation on first coeffs to perform polyval
         
         # Compute interpolated coeffs
         log_estimated_abs_coeffs = np.polyval(log_model, np.log(full_spectrum))
