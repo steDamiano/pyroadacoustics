@@ -161,6 +161,23 @@ class SimulatorManager:
         # Read Pointer on buffers -> same pointer for all buffers
         self._readBufPtr = 0
 
+        # Absorption filter model
+        _min_d = 0
+        _max_d = 150
+
+        # Compute filters at 5 distances between minimum and maximum
+        _d_model = np.arange(_min_d,_max_d,37)
+        _filter = np.zeros((5, 11))
+
+        for i in range(len(_filter)):
+            _filter[i] = self._compute_air_absorption_filter(_d_model[i], 11)
+        
+        _deg = 4
+        self._model = np.zeros((11, _deg + 1))
+
+        for i in range(11):
+            self._model[i] = np.polyfit(_d_model, _filter[:, i], _deg)
+
     def initialize(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> None:
         """
         Computes the propagation delays along the paths:
@@ -266,7 +283,8 @@ class SimulatorManager:
 
         if self.simulation_params["include_air_absorption"]:
             # Attenuation due to air absorption
-            filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
+            # filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
+            filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
             sample_eval = 0
             for ii in range(len(filt_coeffs)):
                 sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
@@ -286,7 +304,8 @@ class SimulatorManager:
             if self.simulation_params["include_air_absorption"]:
 
                 # Attenuation due to air absorption
-                filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
+                # filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
+                filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
 
                 sample_eval = 0
                 for ii in range(len(filt_coeffs)):
@@ -319,7 +338,8 @@ class SimulatorManager:
             # 4. From Road Surface to Receiver
             if self.simulation_params["include_air_absorption"]:
                 # Attenuation due to air absorption
-                filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
+                # filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
+                filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
 
                 sample_eval = 0
                 for ii in range(10):
@@ -495,3 +515,12 @@ class SimulatorManager:
         # Incidence angle
         theta = np.arcsin((src_pos[2] + mic_pos[2]) / dist)
         return theta
+    
+    def _retrieve_air_absorption_filter(self, d, numtaps = 11):
+        filt_coeffs = self._model[:, 4] + self._model[:, 3] * d + self._model[:, 2] * d ** 2 + self._model[:, 1] * d ** 3 + self._model[:, 0] * d ** 4
+        # filt_coeffs1 = np.zeros(numtaps)
+        # for i in range(int((numtaps + 1) / 2)):
+        #     filt_coeffs1[i] = np.polyval(self._model[i], d)
+        
+        # filt_coeffs1[i+1:numtaps] = np.flip(filt_coeffs1[0:i])
+        return filt_coeffs

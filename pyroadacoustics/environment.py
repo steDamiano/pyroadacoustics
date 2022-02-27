@@ -357,7 +357,7 @@ class Environment:
             # Define default signal --> white noise
             simulation_duration = len(self.source.trajectory) / self.fs
             t = np.arange(0, simulation_duration, 1 / self.fs)
-            signal = np.random.randn(t)
+            signal = np.random.randn(len(t))
         
         else:
             while(len(signal) < len(self.source.trajectory)):
@@ -471,7 +471,7 @@ class Environment:
             # Compute output samples
             for n in range(N):
                 signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
-            print(manager.primaryDelLine._ya_alt)
+            signals[m] = signals[m] + self.background_noise
         return signals
     
     def _compute_air_absorption_coefficients(self, nbands: int = 50) -> np.ndarray:
