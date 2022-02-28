@@ -204,11 +204,11 @@ class SimulatorManager:
         theta = self._compute_angle(src_pos, mic_pos)
 
         # Compute distance and delay between src and reflection point
-        a = src_pos[2] / np.sin(theta)
+        a = src_pos[2] / math.sin(theta)
         tau_1 = a / self.c
         
         # Compute distance and delay between reflection point and microphone
-        b = src_pos[2] / np.sin(theta)
+        b = src_pos[2] / math.sin(theta)
         tau_2 = b / self.c
 
         # Set initial delays
@@ -263,11 +263,11 @@ class SimulatorManager:
         theta = self._compute_angle(src_pos, mic_pos)
 
         # Compute distance and delay between src and reflection point
-        a = src_pos[2] / np.sin(theta)
+        a = src_pos[2] / math.sin(theta)
         tau_1 = a / self.c
         
         # Compute distance between reflection point and microphone
-        b = mic_pos[2] / np.sin(theta)
+        b = mic_pos[2] / math.sin(theta)
         tau_2 = b / self.c
 
         # Update delays and get new sample reads
@@ -284,7 +284,7 @@ class SimulatorManager:
         if self.simulation_params["include_air_absorption"]:
             # Attenuation due to air absorption
             # filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
-            filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
+            filt_coeffs = self._retrieve_air_absorption_filter(d)
             sample_eval = 0
             for ii in range(len(filt_coeffs)):
                 sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
@@ -305,7 +305,7 @@ class SimulatorManager:
 
                 # Attenuation due to air absorption
                 # filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
-                filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
+                filt_coeffs = self._retrieve_air_absorption_filter(d)
 
                 sample_eval = 0
                 for ii in range(len(filt_coeffs)):
@@ -339,10 +339,10 @@ class SimulatorManager:
             if self.simulation_params["include_air_absorption"]:
                 # Attenuation due to air absorption
                 # filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
-                filt_coeffs = self._retrieve_air_absorption_filter(d, numtaps = 11)
+                filt_coeffs = self._retrieve_air_absorption_filter(d)
 
                 sample_eval = 0
-                for ii in range(10):
+                for ii in range(len(filt_coeffs)):
                     sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
             else:
                 sample_eval = self._read4Buf[self._readBufPtr]
@@ -488,7 +488,7 @@ class SimulatorManager:
             Tuple containing the distance between source and microphone (in meters) and the time delay (in seconds)
         """
 
-        d = np.sqrt(np.sum((src_pos - mic_pos) ** 2))
+        d = math.sqrt(np.sum((src_pos - mic_pos) ** 2))
         tau = d / self.c
         return d, tau
     
@@ -511,16 +511,29 @@ class SimulatorManager:
         """
 
         # Distance between image and microphone
-        dist = np.sqrt(np.sum(((src_pos - np.array([0, 0 , 2*src_pos[2]])) - mic_pos) ** 2))
+        dist = math.sqrt(np.sum(((src_pos - np.array([0, 0 , 2*src_pos[2]])) - mic_pos) ** 2))
         # Incidence angle
-        theta = np.arcsin((src_pos[2] + mic_pos[2]) / dist)
+        theta = math.asin((src_pos[2] + mic_pos[2]) / dist)
         return theta
     
-    def _retrieve_air_absorption_filter(self, d, numtaps = 11):
-        filt_coeffs = self._model[:, 4] + self._model[:, 3] * d + self._model[:, 2] * d ** 2 + self._model[:, 1] * d ** 3 + self._model[:, 0] * d ** 4
-        # filt_coeffs1 = np.zeros(numtaps)
-        # for i in range(int((numtaps + 1) / 2)):
-        #     filt_coeffs1[i] = np.polyval(self._model[i], d)
-        
-        # filt_coeffs1[i+1:numtaps] = np.flip(filt_coeffs1[0:i])
+    def _retrieve_air_absorption_filter(self, d: float) -> np.ndarray:
+        """
+        Retrieves air absorption filter coefficients using polynomial interpolation. The interpolating
+        polynomial is computed at initialization time (`__init__`) and stored in `self._model`. Note that
+        there is an interpolating polynomial for each of the filter coefficients. This function
+        implements `polyval` in a more efficient manner, when the interpolating polynomial is of order 4, and
+        returns the filter coefficients.
+
+        Parameters
+        ----------
+        d : float
+            Distance in meters
+
+        Returns
+        -------
+        ndarray
+            1D array containing the coefficients of the air absorption filter at distance d
+        """
+        filt_coeffs = (self._model[:, 4] + self._model[:, 3] * d + 
+            self._model[:, 2] * d ** 2 + self._model[:, 1] * d ** 3 + self._model[:, 0] * d ** 4)
         return filt_coeffs

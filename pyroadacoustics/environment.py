@@ -74,10 +74,10 @@ class Environment:
     add_source(position, signal = None, trajectory = None):
         Creates a `SoundSource` by defining its initial position, its signal and (if it is a moving source) its
         trajectory, and inserts it into the acoustic scene
-    add_background_noise(signal, SNR):
+    set_background_noise(signal, SNR):
         Generates a background noise signal to be added to the signals generated at the microphone positions during
-        the simulation. The noise level is defined by setting its SNR with respect to the source signal when the 
-        source is closest to the microphone array, while travelling on its trajectory
+        the simulation. The noise level is defined by setting its SNR with respect to the source signal received by
+        the microphone after the simulation is complete
     add_microphone_array(mic_locs):
         Creates a `MicrophoneArray` object by defining the positions of its microphones, and inserts it into the
         acoustic scene
@@ -92,7 +92,6 @@ class Environment:
             self,
             fs: int = 8000,
             source: SoundSource = None,
-            background_noise: np.ndarray = None,
             mic_array: MicrophoneArray = None,
             temperature: float = 20,
             pressure: float = 1,
@@ -117,9 +116,6 @@ class Environment:
             Sampling frequency used in the simulations, by default 8000
         source : SoundSource, optional
             Sound source that produces simulated sound, by default None
-        background_noise : np.ndarray, optional
-            1D array that contains samples of the background noise to be added in the simulations, by default None.
-            The noise is assumed to be of type diffuse
         mic_array : MicrophoneArray, optional
             Microphone array containing positions of microphones that record sound in the scene, by default None
         temperature : float, optional
@@ -140,7 +136,6 @@ class Environment:
 
         self.fs = fs
         self.source = source
-        self.background_noise = background_noise
         self.mic_array = mic_array
         self.temperature = temperature
         self.pressure = pressure
@@ -162,6 +157,11 @@ class Environment:
         self.c = self._compute_speed_sound(temperature)
         self.air_absorption_coefficients = self._compute_air_absorption_coefficients()
         self.Z0 = self._compute_air_impedance(self.temperature, self.pressure, self.c)
+
+        # If true, background noise will be introduced
+        self._background_noise_flag = False
+        self._background_noise_SNR = 0
+        self._background_noise = None
     
     def set_road_material(self, absorption: str or dict) -> None:
         """
@@ -321,37 +321,34 @@ class Environment:
         """
 
         raise NotImplementedError('Noise Sources are not supported yet')
-
-    def add_background_noise(self, signal: np.ndarray = None, SNR: float = 15) -> None:
+    
+    def set_background_noise(self, signal: np.ndarray = None, SNR: float = 15) -> None:
         """
-        Defines background noise signal to be added to the simulation. The background noise is assumed
-        to be of diffuse type, and is defined based on the SNR in dB scale between the noise signal and source 
-        signal, computed in the position along the trajectory closest to the first microphone of the microphone 
-        array.
+        Enables the use of a static background noise in the simulation. The noise is assumed to be of 
+        diffuse type, and is defined by its `SNR`. This is computed as the SNR between the source signal
+        received by the microphone after the simulation is complete, and the noise signal chosen by the 
+        user. If no noise signal is chosen, an static white noise is used.
 
         Parameters
         ----------
-        signal : np.ndarray
-            1D ndarray containing the samples of the background noise signal to be used during the simulation
-        SNR : float
-            Signal to Noise ratio in dB scale. The SNR is defined as the ratio between the source signal and the
-            noise signal, computed using the source signal received by the first microphone of the array when the
-            source is closest to it while travelling along its trajectory. Default SNR is 15 dB
+        signal : np.ndarray, optional
+            1D ndarray containing the samples of the background noise signal to be used during the simulation, 
+            by default None
+        SNR : float, optional
+            Signal to Noise ratio in dB scale, by default 15
 
         Raises
         ------
         RuntimeError
             If the source or the mic_array has not been instantiated yet
-        
-        Modifies
-        --------
-        background_noise:
-            The computed background noise signal samples are assigned to the corresponding attribute of the class
-
         """
+
         if self.source == None or self.mic_array == None:
             raise RuntimeError("To add a background noise you need to first insert a sound source"
                 "and a microphone array")
+
+        self._background_noise_flag = True
+        self._background_noise_SNR = SNR
         
         if signal is None:
             # Define default signal --> white noise
@@ -364,23 +361,68 @@ class Environment:
                 signal = np.append(signal, signal)
             if len(signal) > len(self.source.trajectory):
                 signal = signal[0:len(self.source.trajectory)]
+        
+        self._background_noise = signal
 
-        # Find closest position between source and first microphone (reference)
-        d_min = float('inf')
-        if self.source.is_static:
-            d_min = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.position) ** 2))
-        else:
-            for i in range(len(self.source.trajectory)):
-                d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
-                if  d_temp < d_min:
-                    d_min = d_temp
+    # def _add_background_noise(self, signal: np.ndarray = None, SNR: float = 15) -> None:
+    #     """
+    #     Defines background noise signal to be added to the simulation. The background noise is assumed
+    #     to be of diffuse type, and is defined based on the SNR in dB scale between the noise signal and source 
+    #     signal, computed in the position along the trajectory closest to the first microphone of the microphone 
+    #     array.
+
+    #     Parameters
+    #     ----------
+    #     signal : np.ndarray
+    #         1D ndarray containing the samples of the background noise signal to be used during the simulation
+    #     SNR : float
+    #         Signal to Noise ratio in dB scale. The SNR is defined as the ratio between the source signal and the
+    #         noise signal, computed using the source signal received by the first microphone of the array when the
+    #         source is closest to it while travelling along its trajectory. Default SNR is 15 dB
+
+    #     Raises
+    #     ------
+    #     RuntimeError
+    #         If the source or the mic_array has not been instantiated yet
         
-        # Compute SNR
-        noise_attenuation = np.sqrt(np.sum((self.source.signal / (4 * np.pi * d_min))** 2) / (10 ** (SNR/10) 
-            * np.sum((signal) ** 2)))
-        signal = signal * noise_attenuation
+    #     Modifies
+    #     --------
+    #     background_noise:
+    #         The computed background noise signal samples are assigned to the corresponding attribute of the class
+
+    #     """
+    #     if self.source == None or self.mic_array == None:
+    #         raise RuntimeError("To add a background noise you need to first insert a sound source"
+    #             "and a microphone array")
         
-        self.background_noise = signal
+    #     if signal is None:
+    #         # Define default signal --> white noise
+    #         simulation_duration = len(self.source.trajectory) / self.fs
+    #         t = np.arange(0, simulation_duration, 1 / self.fs)
+    #         signal = np.random.randn(len(t))
+        
+    #     else:
+    #         while(len(signal) < len(self.source.trajectory)):
+    #             signal = np.append(signal, signal)
+    #         if len(signal) > len(self.source.trajectory):
+    #             signal = signal[0:len(self.source.trajectory)]
+
+    #     # Find closest position between source and first microphone (reference)
+    #     d_min = float('inf')
+    #     if self.source.is_static:
+    #         d_min = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.position) ** 2))
+    #     else:
+    #         for i in range(len(self.source.trajectory)):
+    #             d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
+    #             if  d_temp < d_min:
+    #                 d_min = d_temp
+        
+    #     # Compute SNR
+    #     noise_attenuation = np.sqrt(np.sum((self.source.signal / (4 * np.pi * d_min))** 2) / (10 ** (SNR/10) 
+    #         * np.sum((signal) ** 2)))
+    #     signal = signal * noise_attenuation
+        
+    #     self.background_noise = signal
 
 
     
@@ -471,7 +513,19 @@ class Environment:
             # Compute output samples
             for n in range(N):
                 signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
-            signals[m] = signals[m] + self.background_noise
+            
+
+            # Add background noise
+            if self._background_noise_flag == True:
+                # Compute attenuation factor from SNR
+                noise_attenuation = np.sqrt(np.sum(signals[m]** 2) / (10 ** (self._background_noise_SNR/10) 
+                    * np.sum(self._background_noise ** 2)))
+                
+                # Compute background noise signal
+                noise = self._background_noise * noise_attenuation
+                
+                # Compute signal
+                signals[m] = signals[m] + noise
         return signals
     
     def _compute_air_absorption_coefficients(self, nbands: int = 50) -> np.ndarray:

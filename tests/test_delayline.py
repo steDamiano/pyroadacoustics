@@ -87,21 +87,30 @@ class DelayLineTest(unittest.TestCase):
         # self.assertTrue(np.allclose(dl._frac_delay_lagrange(3, 0.2), np.array([0.672, 0.504, -0.224, 0.048])))
 
         # Check Allpass Interpolation filter
-        dl = DelayLine(N = 10, interpolation='Allpass')
-        dl.set_delays(np.array([1]))
-        for i in range(15):
-            out = dl.update_delay_line(1, np.array([1.3]))
-            if i == 1:
-                self.assertAlmostEqual(float(out), 0 + 0.7 * (1 - 0))
-            if i == 2:
-                self.assertAlmostEqual(float(out), 1 + 0.7 * (1 - 0.7))
-            if i == 3:
-                self.assertAlmostEqual(float(out), 1 + 0.7 * (1 - 1.21))
+        # dl = DelayLine(N = 10, interpolation='Allpass')
+        # dl.set_delays(np.array([1]))
+        # for i in range(15):
+        #     out = dl.update_delay_line(1, np.array([1.3]))
+        #     if i == 1:
+        #         self.assertAlmostEqual(float(out), 0 + 0.7 * (1 - 0))
+        #     if i == 2:
+        #         self.assertAlmostEqual(float(out), 1 + 0.7 * (1 - 0.7))
+        #     if i == 3:
+        #         self.assertAlmostEqual(float(out), 1 + 0.7 * (1 - 1.21))
 
         # # Check Sinc Interpolation filter
         # dl = DelayLine(interpolation='Sinc')
         # filt = dl._frac_delay_sinc(5, np.hanning(5), 0.2)
         # self.assertTrue(np.allclose(filt, np.array([0.0, -0.07795744, 0.93548928, 0.116936104, 0.0])))
 
+        # Test computational time
+        dl = DelayLine(N = 48000, num_read_ptrs=2)
+        dl.set_delays(np.array([250, 370]))
+
+        signal = np.random.randn(40000)
+        for i in range(len(signal)):
+            out1 = dl.update_delay_line(signal[i], np.array([250 - 0.02 * i, 370 - 0.03 * i]))
+
 if __name__ == '__main__':
-    unittest.main()
+    import cProfile
+    cProfile.run('unittest.main()')

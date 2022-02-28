@@ -166,7 +166,9 @@ class DelayLine:
         """
         
         # Create array to store output values
-        y = np.zeros_like(self.read_ptr)
+        # y = np.zeros_like(self.read_ptr)
+        y = np.zeros(len(self.read_ptr))
+        
 
         # Append input sample at the write pointer position and increment write pointer
         self.delay_line[self.write_ptr] = x
@@ -174,7 +176,7 @@ class DelayLine:
 
         for i in range(len(self.read_ptr)):
             # Compute interpolated read position (fractional delay)
-            rpi = math.floor(self.read_ptr[i])
+            rpi = int(self.read_ptr[i])
             frac_del = self.read_ptr[i] - rpi
         
             # Produce output with interpolated read
@@ -237,15 +239,15 @@ class DelayLine:
             # Convolve signal with filter
             out = 0
             for i in range(0, len(h_lagrange)):
-                out = out + h_lagrange[i] * self.delay_line[np.mod(read_ptr_integer + i - math.floor(order/2), self.N)]
+                out = out + h_lagrange[i] * self.delay_line[(read_ptr_integer + i - math.floor(order/2)) % self.N]
             return out
 
         elif method == 'Linear':
             # Linear Interpolation formula
-            return d * self.delay_line[np.mod(read_ptr_integer + 1, self.N)] + (1 - d) * self.delay_line[read_ptr_integer]
+            return d * self.delay_line[(read_ptr_integer + 1) % self.N] + (1 - d) * self.delay_line[read_ptr_integer]
         
         elif method == 'Allpass':
-            y = self.delay_line[read_ptr_integer] + d * (self.delay_line[np.mod(read_ptr_integer + 1, self.N)] 
+            y = self.delay_line[read_ptr_integer] + d * (self.delay_line[(read_ptr_integer + 1) % self.N] 
                 - self._ya_alt[rptr_idx])
             self._ya_alt[rptr_idx] = y
             return y
@@ -260,7 +262,7 @@ class DelayLine:
             # Convolve signal with filter
             out = 0
             for i in range(0, self._SINC_SMP):
-                out = out + h_sinc[i]*self.delay_line[np.mod(read_ptr_integer + i - math.floor(self._SINC_SMP/2), self.N)]
+                out = out + h_sinc[i]*self.delay_line[(read_ptr_integer + i - math.floor(self._SINC_SMP/2)) % self.N]
             return out
 
         else:

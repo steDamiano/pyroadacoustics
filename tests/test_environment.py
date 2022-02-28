@@ -158,22 +158,22 @@ class EnvironmentTest(unittest.TestCase):
         env = Environment()
         env.add_source(position = np.array([3, 5, 1]), trajectory_points = np.array([[3,10,1], [3,-20,1]]), 
             source_velocity = np.array([5]), signal = src_signal)
-        env.add_microphone_array(np.array([[0.,0.,1.],[0.,0.5,1.],[0.,1.,1.]]))
-        env.set_simulation_params("Linear", True, False)
+        env.add_microphone_array(np.array([[0.,0.,1.]]))#,[0.,0.5,1.],[0.,1.,1.]]))
+        env.set_simulation_params("Linear", True, True)
         signals = env.simulate()
 
-        # plot signals received at the 3 microphones
-        plt.figure()
-        fig, ax = plt.subplots(3,1)
-        ax[0].plot(signals[0,100:150])
-        ax[1].plot(signals[1,100:150])
-        ax[2].plot(signals[2,100:150])
-        plt.show()
+        # # plot signals received at the 3 microphones
+        # plt.figure()
+        # fig, ax = plt.subplots(3,1)
+        # ax[0].plot(signals[0,100:150])
+        # ax[1].plot(signals[1,100:150])
+        # ax[2].plot(signals[2,100:150])
+        # plt.show()
 
-        plt.figure()
-        ff, tt, Sxx = scipy.signal.spectrogram(1 * signals[0,:], 8000)
-        plt.pcolormesh(tt, ff, Sxx, shading = 'auto')
-        plt.show()
+        # plt.figure()
+        # ff, tt, Sxx = scipy.signal.spectrogram(1 * signals[0,:], 8000)
+        # plt.pcolormesh(tt, ff, Sxx, shading = 'auto')
+        # plt.show()
 
 
 if __name__ == '__main__':
