@@ -63,7 +63,7 @@ class SimulatorManagerTest(unittest.TestCase):
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
-        table = manager.asphaltReflectionFilterTable
+        table = manager._compute_angle_reflection_table(11)
         self.assertTrue(np.allclose(np.array([2.11913465e-04, 4.74255759e-04, 1.94346413e-03, 3.66518709e-03,
             1.78383025e-02, 9.12592381e-01, 1.78383025e-02, 3.66518709e-03,
             1.94346413e-03, 4.74255759e-04, 2.11913465e-04]), table[89]))
