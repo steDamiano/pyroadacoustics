@@ -101,7 +101,8 @@ class DelayLineTest(unittest.TestCase):
         # Check Sinc Interpolation filter
         dl = DelayLine(interpolation='Sinc')
         filt = dl._frac_delay_sinc(5, np.hanning(5), 0.2)
-        self.assertTrue(np.allclose(filt, np.array([0.0, -0.07795744, 0.93548928, 0.116936104, 0.0])))
+        # self.assertTrue(np.allclose(filt, np.array([0.0, -0.07795744, 0.93548928, 0.116936104, 0.0])))
+        self.assertTrue(np.allclose(filt, np.array([ 0., -0.08, 0.96, 0.12, -0.])))
 
         # Test computational time
         dl = DelayLine(N = 48000, num_read_ptrs=2)
@@ -110,7 +111,16 @@ class DelayLineTest(unittest.TestCase):
         signal = np.random.randn(40000)
         for i in range(len(signal)):
             out1 = dl.update_delay_line(signal[i], np.array([250 - 0.02 * i, 370 - 0.03 * i]))
+    
+    def test_sinc_table(self):
+        dl = DelayLine(interpolation='Sinc')
+        filt_true = dl._frac_delay_sinc(11, np.hanning(11), 0.261)
+        filt_int = dl._frac_delay_interpolated_sinc(0.261)
+        self.assertTrue(np.linalg.norm(filt_true - filt_int) < 0.04)
+        print(filt_true)
+        print(filt_int)
 
 if __name__ == '__main__':
     import cProfile
-    cProfile.run('unittest.main()')
+    # cProfile.run('unittest.main()')
+    unittest.main()

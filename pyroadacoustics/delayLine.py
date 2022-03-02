@@ -104,6 +104,17 @@ class DelayLine:
 
         self._SINC_SMP = 11
         self._WINDOW = np.hanning(self._SINC_SMP)
+        _table_size = 50
+        self._delta = 1 / _table_size
+        self._table_delays = np.arange(0,1,self._delta)
+        
+        n = np.arange(self._SINC_SMP)
+        self._sinc_table = np.zeros((_table_size, self._SINC_SMP))
+
+        for idx, val in enumerate(self._table_delays):
+            self._sinc_table[idx] = np.sinc(n - (self._SINC_SMP - 1) / 2 - val)
+            self._sinc_table[idx] *= self._WINDOW
+            self._sinc_table[idx] = self._sinc_table[idx] / np.sum(self._sinc_table[idx])
 
         self._ya_alt = np.zeros(len(self.read_ptr))    # Initial buffer parameter for all-pass interpolation
 
@@ -256,7 +267,8 @@ class DelayLine:
             # Define windowed sinc filter paramters and compute coefficients
             # sinc_samples = 11
             # sinc_window = np.hanning(sinc_samples)
-            h_sinc = self._frac_delay_sinc(self._SINC_SMP, self._WINDOW, d)
+            # h_sinc = self._frac_delay_sinc(self._SINC_SMP, self._WINDOW, d)
+            h_sinc = self._frac_delay_interpolated_sinc(d)
             # TODO: Implement sinc lookup with linear interpolation to speed up computations
             
             # Convolve signal with filter
@@ -297,7 +309,35 @@ class DelayLine:
             
             h[index] = h[index] * (delay - k) / (n[index] - k)
         return h
-    
+
+    def _frac_delay_interpolated_sinc(self, delay: float) -> np.ndarray:
+        """
+        Computes windowed sinc FIR filter coefficients for sinc interpolation, using a table lookup and linear
+        interpolation. In the initialization of the `DelayLine` component, a sinc table is computed, and contains
+        the samples of windowed sinc filters to interpolate a predefined set of fractional delays between 0 and 1,
+        with a step size equal to `self._delta`. 
+
+        Given the fractional part of the delay `delay`, this functions retrieves the two sinc arrays corresponding to 
+        the nearest available delay points, and performs a linear interpolation to retrieve the windowed sinc samples
+        that correspond to the delay `delay`.
+
+        Parameters
+        ----------
+        delay : float
+            _description_
+
+        Returns
+        -------
+        np.ndarray
+            _description_
+        """
+        alpha = delay % self._delta
+        position = np.searchsorted(self._table_delays, delay - alpha)
+        if alpha < 1e-9:
+            return self._sinc_table[position]
+        else:
+            return alpha * (self._sinc_table[position] - self._sinc_table[position + 1]) + self._sinc_table[position + 1]
+
     def _frac_delay_sinc(self, sinc_samples: int, sinc_window: np.ndarray, delay: float) -> np.ndarray:
         """
         Computes windowed sinc FIR filter coefficients for sinc interpolation.
@@ -316,4 +356,6 @@ class DelayLine:
         np.ndarray
             1D array containing `sinc_samples` FIR filter coefficients
         """
-        return sinc_window * np.sinc(np.arange(0,sinc_samples) - (sinc_samples - 1) / 2 - delay)
+        sinc_filter = sinc_window * np.sinc(np.arange(0,sinc_samples) - (sinc_samples - 1) / 2 - delay)
+        
+        return sinc_filter / np.sum(sinc_filter)
