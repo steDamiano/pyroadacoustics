@@ -79,7 +79,7 @@ class Material:
         self.absorption = absorption
         self.reflection_coeffs = np.sqrt(1 - np.array(self.absorption["coeffs"]))
     
-    def extrapolate_coeffs_to_spectrum(self, interp_degree = 1, fs = 8000, n_bands = 8) -> np.array:
+    def extrapolate_coeffs_to_spectrum(self, interp_degree = 2, fs = 8000, n_bands = 8) -> np.array:
         """
         Extrapolate absorption coefficients to fill the frequency spectrum from 0 to fs/2.
         The extrapolation is operated via fitting a polynomial of degree interp_degree to

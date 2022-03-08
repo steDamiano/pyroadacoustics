@@ -104,9 +104,9 @@ class DelayLine:
 
         self._SINC_SMP = 11
         self._WINDOW = np.hanning(self._SINC_SMP)
-        _table_size = 50
-        self._delta = 1 / _table_size
-        self._table_delays = np.arange(0,1,self._delta)
+        _table_size = 51
+        self._delta = 1 / 50
+        self._table_delays = np.arange(0,1+self._delta,self._delta)
         
         n = np.arange(self._SINC_SMP)
         self._sinc_table = np.zeros((_table_size, self._SINC_SMP))
