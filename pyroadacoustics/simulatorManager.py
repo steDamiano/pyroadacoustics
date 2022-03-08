@@ -161,22 +161,38 @@ class SimulatorManager:
         # Read Pointer on buffers -> same pointer for all buffers
         self._readBufPtr = 0
 
-        # Absorption filter model
-        _min_d = 0
-        _max_d = 150
+        # Compute air absorption filter 
+        freqs = np.linspace(0, self.fs / 2, 50)
+        w = 2 * np.pi * freqs / (fs / 2)
+        # Filter order
+        L = 10
 
-        # Compute filters at 5 distances between minimum and maximum
-        _d_model = np.arange(_min_d,_max_d,37)
-        _filter = np.zeros((5, 11))
-
-        for i in range(len(_filter)):
-            _filter[i] = self._compute_air_absorption_filter(_d_model[i], 11)
+        # Matrix A
+        A = np.zeros((len(w),int(L/2 + 1)))
+        A[:,0] = 1
+        for i in range(len(w)):
+            for j in range(1,int(L/2 + 1)):
+                A[i,j] = 2 * math.cos(w[i] * j)
         
-        _deg = 4
-        self._model = np.zeros((11, _deg + 1))
+        self._pseud_A = np.linalg.inv(A.T.dot(A)).dot(A.T)
+        
+        # # Absorption filter model
+        # _min_d = 0
+        # _max_d = 150
 
-        for i in range(11):
-            self._model[i] = np.polyfit(_d_model, _filter[:, i], _deg)
+        # # Compute filters at 5 distances between minimum and maximum
+
+        # _d_model = np.arange(_min_d,_max_d,37)
+        # _filter = np.zeros((5, 11))
+
+        # for i in range(len(_filter)):
+        #     _filter[i] = self._compute_air_absorption_filter(_d_model[i], 11)
+        
+        # _deg = 4
+        # self._model = np.zeros((11, _deg + 1))
+
+        # for i in range(11):
+        #     self._model[i] = np.polyfit(_d_model, _filter[:, i], _deg)
 
     def initialize(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> None:
         """
@@ -283,8 +299,8 @@ class SimulatorManager:
 
         if self.simulation_params["include_air_absorption"]:
             # Attenuation due to air absorption
-            # filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
-            filt_coeffs = self._retrieve_air_absorption_filter(d)
+            filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
+            # filt_coeffs = self._retrieve_air_absorption_filter(d)
             sample_eval = 0
             for ii in range(len(filt_coeffs)):
                 sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
@@ -304,8 +320,8 @@ class SimulatorManager:
             if self.simulation_params["include_air_absorption"]:
 
                 # Attenuation due to air absorption
-                # filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
-                filt_coeffs = self._retrieve_air_absorption_filter(d)
+                filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
+                # filt_coeffs = self._retrieve_air_absorption_filter(d)
 
                 sample_eval = 0
                 for ii in range(len(filt_coeffs)):
@@ -338,8 +354,8 @@ class SimulatorManager:
             # 4. From Road Surface to Receiver
             if self.simulation_params["include_air_absorption"]:
                 # Attenuation due to air absorption
-                # filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
-                filt_coeffs = self._retrieve_air_absorption_filter(d)
+                filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
+                # filt_coeffs = self._retrieve_air_absorption_filter(d)
 
                 sample_eval = 0
                 for ii in range(len(filt_coeffs)):
@@ -383,7 +399,10 @@ class SimulatorManager:
         """
 
         alpha = 10 ** (-self.airAbsorptionCoefficients * distance / 20)     # Convert coeffs in dB to linear scale
-        filt_coeffs = scipy.signal.firwin2(numtaps, self.norm_freqs, alpha)
+        # filt_coeffs = scipy.signal.firwin2(numtaps, self.norm_freqs, alpha)
+        filt_coeffs = self._pseud_A.dot(alpha)
+        # h_hat2 = np.linalg.lstsq(A,alpha_lin, rcond = -1)
+        filt_coeffs = np.append(np.flip(filt_coeffs[1:]), filt_coeffs)
         
         return filt_coeffs
 
