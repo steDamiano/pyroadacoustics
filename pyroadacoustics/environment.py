@@ -528,7 +528,7 @@ class Environment:
                 signals[m] = signals[m] + noise
         return signals
     
-    def _compute_air_absorption_coefficients(self, nbands: int = 50) -> np.ndarray:
+    def _compute_air_absorption_coefficients(self, nbands: int = 20) -> np.ndarray:
         """
         Computes air absorption coefficients at a set of nbands equispaced frequencies in the range `[0, fs]`, based
         on the ISO 9613-1 standard. 

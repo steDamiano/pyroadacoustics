@@ -162,7 +162,7 @@ class SimulatorManager:
         self._readBufPtr = 0
 
         # Compute air absorption filter 
-        freqs = np.linspace(0, self.fs / 2, 50)
+        freqs = np.linspace(0, self.fs / 2, len(airAbsorptionCoefficients))
         w = 2 * np.pi * freqs / (fs / 2)
         # Filter order
         L = 10
