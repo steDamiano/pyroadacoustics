@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.signal
 import math
+from collections import deque
 
 from .delayLine import DelayLine
 from .material import Material
@@ -153,13 +154,13 @@ class SimulatorManager:
         self.asphaltReflectionFilterTable = self._compute_angle_reflection_table(ntaps = 11)
        
         # Buffers to store previous data read from delay lines for filtering purpose
-        self._read1Buf = np.zeros(20)
-        self._read2Buf = np.zeros(20)
-        self._read3Buf = np.zeros(20)
-        self._read4Buf = np.zeros(20)
+        self._read1Buf = deque(np.zeros(11), maxlen=11) # np.zeros(20)
+        self._read2Buf = deque(np.zeros(11), maxlen=11) # np.zeros(20)
+        self._read3Buf = deque(np.zeros(11), maxlen=11) # np.zeros(20)
+        self._read4Buf = deque(np.zeros(11), maxlen=11) # np.zeros(20)
         
         # Read Pointer on buffers -> same pointer for all buffers
-        self._readBufPtr = 0
+        # self._readBufPtr = 0
 
         # Compute air absorption filter 
         freqs = np.linspace(0, self.fs / 2, len(airAbsorptionCoefficients))
@@ -291,8 +292,10 @@ class SimulatorManager:
             tau_1 * self.fs]))
 
         # Store the read samples in a circular array for filtering with air absorption and asphalt reflection
-        self._read1Buf[self._readBufPtr] = y_primary[0]
-        self._read2Buf[self._readBufPtr] = y_primary[1]
+        # self._read1Buf[self._readBufPtr] = y_primary[0]
+        # self._read2Buf[self._readBufPtr] = y_primary[1]
+        self._read1Buf.appendleft(y_primary[0])
+        self._read2Buf.appendleft(y_primary[1])
         
         y_received = 0
         ### DIRECT PATH ###
@@ -301,11 +304,12 @@ class SimulatorManager:
             # Attenuation due to air absorption
             filt_coeffs = self._compute_air_absorption_filter(d, numtaps = 11)
             # filt_coeffs = self._retrieve_air_absorption_filter(d)
-            sample_eval = 0
-            for ii in range(len(filt_coeffs)):
-                sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+            # sample_eval = 0
+            # for ii in range(len(filt_coeffs)):
+            #     sample_eval = sample_eval + self._read1Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+            sample_eval = filt_coeffs.dot(list(self._read1Buf))
         else:
-            sample_eval = self._read1Buf[self._readBufPtr]
+            sample_eval = self._read1Buf[0]
         
         # Attenuation due to distance
         att = self._compute_sound_attenuation(d)
@@ -323,33 +327,35 @@ class SimulatorManager:
                 filt_coeffs = self._compute_air_absorption_filter(a, numtaps = 11)
                 # filt_coeffs = self._retrieve_air_absorption_filter(d)
 
-                sample_eval = 0
-                for ii in range(len(filt_coeffs)):
-                    sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
-            
+                # sample_eval = 0
+                # for ii in range(len(filt_coeffs)):
+                #     sample_eval = sample_eval + self._read2Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+                sample_eval = filt_coeffs.dot(list(self._read2Buf))
             else:
-                sample_eval = self._read2Buf[self._readBufPtr]
+                sample_eval = self._read2Buf[0]
             
             # Attenuation due to distance
             att = self._compute_sound_attenuation(a)
             sample_eval = att * sample_eval
             
             # Write output of first filter in buffer, to be able to apply second filter in cascade
-            self._read3Buf[self._readBufPtr] = sample_eval
+            self._read3Buf.appendleft(sample_eval)
 
             # 2. Asphalt Absorption
             asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta))
             
-            sample_eval = 0
-            for ii in range(len(asphalt_filter_coeffs)):
-                sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
+            # sample_eval = 0
+            # for ii in range(len(asphalt_filter_coeffs)):
+            #     sample_eval = sample_eval + self._read3Buf[self._readBufPtr - ii] * asphalt_filter_coeffs[ii]
+            sample_eval = asphalt_filter_coeffs.dot(list(self._read3Buf))
             
             
             # 3. Second path in air --> Secondary Delay Line
             y_secondary = self.secondaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
 
             # Store output of secondary delay line in buffer for cascade air abs filter
-            self._read4Buf[self._readBufPtr] = y_secondary
+            # self._read4Buf[self._readBufPtr] = y_secondary
+            self._read4Buf.appendleft(y_secondary)
 
             # 4. From Road Surface to Receiver
             if self.simulation_params["include_air_absorption"]:
@@ -357,11 +363,12 @@ class SimulatorManager:
                 filt_coeffs = self._compute_air_absorption_filter(b, numtaps = 11)
                 # filt_coeffs = self._retrieve_air_absorption_filter(d)
 
-                sample_eval = 0
-                for ii in range(len(filt_coeffs)):
-                    sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+                # sample_eval = 0
+                # for ii in range(len(filt_coeffs)):
+                #     sample_eval = sample_eval + self._read4Buf[self._readBufPtr - ii] * filt_coeffs[ii]
+                sample_eval = filt_coeffs.dot(list(self._read4Buf))
             else:
-                sample_eval = self._read4Buf[self._readBufPtr]
+                sample_eval = self._read4Buf[0]
             
             # Attenuation due to distance
             att = self._compute_sound_attenuation(b)
@@ -374,9 +381,9 @@ class SimulatorManager:
         y_received = y_received + y_dir
 
         # Update read pointer of buffers, and ensure circularity
-        self._readBufPtr +=1
-        if self._readBufPtr >= 20:
-            self._readBufPtr -= 20
+        # self._readBufPtr +=1
+        # if self._readBufPtr >= 20:
+        #     self._readBufPtr -= 20
 
         return y_received
     
