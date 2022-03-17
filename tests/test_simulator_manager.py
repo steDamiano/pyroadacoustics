@@ -170,6 +170,9 @@ class SimulatorManagerTest(unittest.TestCase):
     #     # plt.show()
         
     def test_update(self):
+        import cProfile
+        pr = cProfile.Profile()
+        pr.enable()
         # Initialization
         src_pos = np.array([0., 2, 1.])
         mic_pos = np.array([[0,0,1]])
@@ -192,9 +195,7 @@ class SimulatorManagerTest(unittest.TestCase):
         start_time = time.time()
 
         y_received = np.zeros(1000)
-        import cProfile
-        pr = cProfile.Profile()
-        pr.enable()
+        
         for i in range(1000):
             y_received[i] = manager.update(src_pos, mic_pos[0], 1)
             # print(y_received[i])
