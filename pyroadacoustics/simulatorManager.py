@@ -397,12 +397,14 @@ class SimulatorManager:
         np.ndarray
             1D array containing `numtaps` FIR filter coefficients modelling air absorption
         """
-
+        filt_coeffs = np.empty(numtaps, np.float64)
         alpha = 10 ** (-self.airAbsorptionCoefficients * distance / 20)     # Convert coeffs in dB to linear scale
         # filt_coeffs = scipy.signal.firwin2(numtaps, self.norm_freqs, alpha)
-        filt_coeffs = self._pseud_A.dot(alpha)
+        filt_coeffs[int((numtaps+1)/2)-1:] = self._pseud_A.dot(alpha)
+        # filt_coeffs = self._pseud_A.dot(alpha)
+        filt_coeffs[0:int((numtaps+1)/2)-1] = np.flip(filt_coeffs[int((numtaps+1)/2):])
         # h_hat2 = np.linalg.lstsq(A,alpha_lin, rcond = -1)
-        filt_coeffs = np.append(np.flip(filt_coeffs[1:]), filt_coeffs)
+        # filt_coeffs = np.append(np.flip(filt_coeffs[1:]), filt_coeffs)
         
         return filt_coeffs
 

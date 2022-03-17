@@ -82,27 +82,27 @@ class SimulatorManagerTest(unittest.TestCase):
     #     table = manager.asphaltReflectionFilterTable
     #     self.assertTrue(np.allclose(manager._get_asphalt_reflection_filter(0), table[89]))
     
-    def test_air_absorption_filter(self):
-        src_pos = np.array([0., 0., 1.])
-        mic_pos = np.array([[0,2,1]])
-        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
-        env.add_source(position=src_pos)
-        env.add_microphone_array(mic_pos)
-        manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
-        airabs = manager._compute_air_absorption_filter(2, 11)
+    # def test_air_absorption_filter(self):
+    #     src_pos = np.array([0., 0., 1.])
+    #     mic_pos = np.array([[0,2,1]])
+    #     env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
+    #     env.add_source(position=src_pos)
+    #     env.add_microphone_array(mic_pos)
+    #     manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
+    #     airabs = manager._compute_air_absorption_filter(2, 11)
         
-        # FIRLS Method
-        alpha = manager.airAbsorptionCoefficients
-        alpha_lin = 10 ** (-2 * alpha / 20)
-        airabs2 = scipy.signal.firls(11, manager.norm_freqs, alpha_lin)
-        # print(np.linalg.norm(airabs - airabs2))
-        # plt.plot(airabs)
-        # plt.plot(airabs2, '--')
-        # plt.show()
-        self.assertTrue(np.linalg.norm(airabs - airabs2) < 0.01)
-        # self.assertTrue(np.allclose(airabs, np.array([ 6.38159572e-06, -7.46507571e-06,  7.34304137e-05, -1.69455098e-04,
-        # 1.19788090e-03,  9.97292653e-01,  1.19788090e-03, -1.69455098e-04,
-        # 7.34304137e-05, -7.46507571e-06,  6.38159572e-06])))
+    #     # FIRLS Method
+    #     alpha = manager.airAbsorptionCoefficients
+    #     alpha_lin = 10 ** (-2 * alpha / 20)
+    #     airabs2 = scipy.signal.firls(11, manager.norm_freqs, alpha_lin)
+    #     # print(np.linalg.norm(airabs - airabs2))
+    #     # plt.plot(airabs)
+    #     # plt.plot(airabs2, '--')
+    #     # plt.show()
+    #     self.assertTrue(np.linalg.norm(airabs - airabs2) < 0.01)
+    #     # self.assertTrue(np.allclose(airabs, np.array([ 6.38159572e-06, -7.46507571e-06,  7.34304137e-05, -1.69455098e-04,
+    #     # 1.19788090e-03,  9.97292653e-01,  1.19788090e-03, -1.69455098e-04,
+    #     # 7.34304137e-05, -7.46507571e-06,  6.38159572e-06])))
     
     # def test_set_parameters(self):
     #     env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
@@ -192,10 +192,15 @@ class SimulatorManagerTest(unittest.TestCase):
         start_time = time.time()
 
         y_received = np.zeros(1000)
+        import cProfile
+        pr = cProfile.Profile()
+        pr.enable()
         for i in range(1000):
             y_received[i] = manager.update(src_pos, mic_pos[0], 1)
             # print(y_received[i])
-        print(time.time() - start_time)
+        pr.disable()
+        pr.print_stats(sort = 'time')
+        # print(time.time() - start_time)
         self.assertTrue(np.allclose(manager.primaryDelLine.delay_line[0:1000], np.ones(1000)))
         self.assertTrue(max(y_received) < 1)
         
