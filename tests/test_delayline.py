@@ -70,8 +70,6 @@ class DelayLineTest(unittest.TestCase):
         for i in range(15):
             out = dl.update_delay_line(i + 1, np.array([5]))
             self.assertEqual(out, expected_out[i])
-            # self.assertGreaterEqual(dl.write_ptr, 0)
-            # self.assertLessEqual(float(dl.read_ptr), dl.N)
         
         # Check Linear Interpolation
         dl = DelayLine(N = 10, interpolation= "Linear")
@@ -101,7 +99,6 @@ class DelayLineTest(unittest.TestCase):
         # Check Sinc Interpolation filter
         dl = DelayLine(interpolation='Sinc')
         filt = dl._frac_delay_sinc(5, np.hanning(5), 0.2)
-        # self.assertTrue(np.allclose(filt, np.array([0.0, -0.07795744, 0.93548928, 0.116936104, 0.0])))
         self.assertTrue(np.allclose(filt, np.array([ 0., -0.08, 0.96, 0.12, -0.])))
 
         # Test computational time

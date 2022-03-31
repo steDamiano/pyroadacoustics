@@ -68,9 +68,6 @@ class SimulatorManagerTest(unittest.TestCase):
        4.46539850e-03, 9.33648475e-01, 4.46539850e-03, 5.61281019e-03,
        1.95861242e-03, 6.54709799e-04, 2.04541068e-04]), table[89]))
        
-        # w, H_fir = scipy.signal.freqz(table[89], a=1, worN = 11)
-        # plt.plot(w, abs(H_fir))
-        # plt.show()
     
     def test_get_reflection_filter(self):
         src_pos = np.array([0., 0., 1.])
@@ -95,14 +92,8 @@ class SimulatorManagerTest(unittest.TestCase):
         alpha = manager.airAbsorptionCoefficients
         alpha_lin = 10 ** (-2 * alpha / 20)
         airabs2 = scipy.signal.firls(11, manager.norm_freqs, alpha_lin)
-        # print(np.linalg.norm(airabs - airabs2))
-        # plt.plot(airabs)
-        # plt.plot(airabs2, '--')
-        # plt.show()
         self.assertTrue(np.linalg.norm(airabs - airabs2) < 0.01)
-        # self.assertTrue(np.allclose(airabs, np.array([ 6.38159572e-06, -7.46507571e-06,  7.34304137e-05, -1.69455098e-04,
-        # 1.19788090e-03,  9.97292653e-01,  1.19788090e-03, -1.69455098e-04,
-        # 7.34304137e-05, -7.46507571e-06,  6.38159572e-06])))
+
     
     def test_set_parameters(self):
         env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
@@ -198,10 +189,8 @@ class SimulatorManagerTest(unittest.TestCase):
         
         for i in range(1000):
             y_received[i] = manager.update(src_pos, mic_pos[0], 1)
-            # print(y_received[i])
         pr.disable()
         pr.print_stats(sort = 'time')
-        # print(time.time() - start_time)
         self.assertTrue(np.allclose(manager.primaryDelLine.delay_line[0:1000], np.ones(1000)))
         self.assertTrue(max(y_received) < 1)
         

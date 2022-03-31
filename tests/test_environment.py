@@ -40,8 +40,6 @@ class EnvironmentTest(unittest.TestCase):
     def test_compute_airabs_coeffs(self):
         env = Environment(temperature=20, pressure=1, rel_humidity=50)
         alpha = env._compute_air_absorption_coefficients(nbands=8)
-        # Ground Truth with Springer model
-        # alpha_expected = np.array([0., 0.0130, 0.0441, 0.0839, 0.1237, 0.1589, 0.1886, 0.2131])
 
         # Ground Truth with ISO model
         alpha_expected = np.array([0, 0.003035195287164, 0.005249959372774, 0.008106658065295, 0.011952756167730,
