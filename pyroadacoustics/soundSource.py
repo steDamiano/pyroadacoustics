@@ -5,13 +5,13 @@ class SoundSource:
     A class that defines a sound source. The sound source is assumed to be point-like and 
     omnidirectional, and emits an arbitrary sound signal. It is initially located in a 
     defined position, and moves along an arbitrary trajectory defined as a series of segments
-    connecting a set of points given as input.
+    connecting a set of points, given as input.
 
     Attributes
     ----------
-    position: ndarray
-        1D array that contains initial position of soundsource as a set of 3 cartesian coordinates `[x,y,z]`
-    signal: ndarray
+    position: np.ndarray
+        1D array that contains initial position of sound source as a set of 3 cartesian coordinates `[x,y,z]`
+    signal: np.ndarray
         1D array that contains samples of signal emitted by the sound source
     fs: int
         Sampling frequency of the emitted signal
@@ -25,7 +25,7 @@ class SoundSource:
     -------
     set_trajectory(positions, speed):
         Defines a trajectory from a given set of N positions (`positions`) and N-1 velocities (`speed`). The speed
-        modulus is assumed to be constant between each couple of positions.
+        is assumed to be constant between each couple of positions.
     set_signal(signal):
         Setter for signal attribute: assigns given signal to the sound source
     """
@@ -79,32 +79,32 @@ class SoundSource:
 
     def set_trajectory(self, positions: np.ndarray, speed: np.ndarray) -> np.ndarray:
         """
-        Defines a trajectory for the sound source from a set of N positions (given as triplets of cartesian
+        Defines a trajectory for the sound source from a set of N positions (given as triplets of Cartesian
         coordinates) and the values of the modulus of the source velocity between each subsequent couple of positions.
-        The trajectory is defined as the positions covered by the sound source at each sample of the simulation.
+        The trajectory is defined as the positions assumed by the sound source at each sample of the simulation.
         Therefore, given the N input points, the method first computes a set of N-1 segments connecting one point to 
         the following one. Then, each segment is sampled according to the speed of the source in that segment and
         the signal sampling frequency, to yield a series of points so that each signal sample is emitted by the
-        source at a different position on the trajectory.
+        source at a different position of the trajectory.
 
         Parameters
         ----------
-        positions : ndarray
+        positions : np.ndarray
             2D Array containing N sets of 3 cartesian coordinates `[x,y,z]` defining the desired trajectory positions.
-            Each couple of subsequent points define a straight segment on the overall trajectory
-        speed : ndarray or float
+            Each couple of subsequent points defines a straight segment on the overall trajectory
+        speed : np.ndarray or float
             * 2D Array containing N-1 floats defining the modulus of the velocity on each trajectory segment
             * float defining the modulus of the velocity on the whole trajectory (i.e. constant speed)
 
         Returns
         -------
-        trajectory: ndarray
-            2D Array containing N' sets of 3 cartesian coordinates `[x,y,z]` defining the full sampled trajectory
+        trajectory: np.ndarray
+            2D Array containing N sets of 3 cartesian coordinates `[x,y,z]` defining the full sampled trajectory
 
         Raises
         ------
         ValueError
-            If `speed` is neither a `float` nor a `ndarray` so that `len(speed) != (np.shape(positions)[0] - 1)`
+            If `speed` is neither a `float` nor a `np.ndarray` so that `len(speed) != (np.shape(positions)[0] - 1)`
         ValueError
             If `speed` is 0 or speed array contains value 0
 

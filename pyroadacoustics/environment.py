@@ -9,26 +9,26 @@ from .simulatorManager import SimulatorManager
 
 class Environment:
     """
-    This class is the main class of the package and defines the Acoustic Scene that will be simulated. The 
-    package aims at the simulation of sound source emitting sound above a flat surface. The sound propagation
-    is simulated according to a model of the atmospheric sound propagation and takes into account the sound
-    that is being reflected by the asphalt surface of the road.
+    This is the main class of the package and defines the Acoustic Scene that will be simulated. The goal of the
+    package is the simulation of a moving sound source emitting sound above a flat surface. The sound propagation
+    is simulated according to a model of the atmospheric sound propagation, and takes into account the sound
+    that is being reflected by the road surface.
 
     The acoustic scene is composed of:
-    * One sound source, that is emitting an arbitrary signal and can be stati or move on an arbitrary trajectory
-    * One Microphone Array, containing a set of N omnidirectionalmicrophones with an arbitrary disposition. The 
+    * One sound source, emitting an arbitrary signal. It can be static or move along an arbitrary trajectory
+    * One Microphone Array, containing a set of N omnidirectional microphones with an arbitrary disposition. The 
     array is static and is used to capture the sound produced by the moving source.
-    * A set of environmental parameters describing the atmospheric model:
+    * A set of environmental parameters describing the atmospheric conditions:
             * Atmospheric Pressure
             * Atmospheric Temperature
             * Relative Humidity
     * The material of the road surface
-    * An optional diffuse background noise signal that is present in the environment
+    * An optional diffuse background noise signal to be added to the simulation
 
-    Alongside this parameters, simulation attributes are also defined:
-    * The sampling frequency to be used
+    Alongside these parameters, simulation attributes are also defined:
+    * The sampling frequency
     * The air absorption coefficients
-    * TODO the asphalt reflection coefficients
+    * The asphalt reflection coefficients
 
     From this class the simulation can be set up and run, via the instantiation of a SimulatorManager that
     contains the core functions of the simulator.
@@ -42,7 +42,7 @@ class Environment:
     source: SoundSource
         Object containing parameters of the sound source
     background_noise: np.ndarray
-        1D Array containing the samples of the background noise signal present in the scene. The 
+        1D Array containing the samples of the background noise signal. The 
         background noise is assumed to be of diffuse type
     mic_array: MicrophoneArray
         Object containing the parameters of the microphone array (number and position of microphones)
@@ -51,7 +51,7 @@ class Environment:
     pressure: float
         Atmospheric pressure expressed in `atm`
     rel_humidity: int
-        Relative Humidity expressed as a percentage. Takes value between 0 and 100
+        Relative Humidity expressed as a percentage. Takes values between 0 and 100
     road_material: Material
         Object containing information about the absorption and reflection properties of the road surface
     air_absorption_coefficients: np.ndarray
@@ -91,8 +91,6 @@ class Environment:
     def __init__(
             self,
             fs: int = 8000,
-            # source: SoundSource = None,
-            # mic_array: MicrophoneArray = None,
             temperature: float = 20,
             pressure: float = 1,
             rel_humidity: int = 50,
@@ -102,22 +100,18 @@ class Environment:
         """
         Creates an Environment object by setting the simulation scene parameters. The Environment is defined by
         * a `SoundSource` object, representing a sound source moving along a trajectory
-        * a `MicrophoneArray` object, representing a set of N microphones in certain positions in the acoustic scene
+        * a `MicrophoneArray` object, representing a set of N microphones in fixed positions
         * a set of parameters describing the atmospheric conditions:
                 * Temperature
                 * Pressure
                 * Relative Humidity
         * a `Material` object describing the absorption and reflection properties of the road surface
-        * a sampling frequency `fs` using in the simulations
+        * a sampling frequency `fs` used in the simulations
 
         Parameters
         ----------
         fs : int, optional
             Sampling frequency used in the simulations, by default 8000
-        source : SoundSource, optional
-            Sound source that produces simulated sound, by default None
-        mic_array : MicrophoneArray, optional
-            Microphone array containing positions of microphones that record sound in the scene, by default None
         temperature : float, optional
             Atmospheric temperature in `Celsius` degrees, by default 20 degrees
         pressure : float, optional
@@ -173,7 +167,7 @@ class Environment:
         Parameters
         ----------
         absorption : str or dict
-            * If `str` is given: choose `Material` from database
+            * If `str` is given: chooses `Material` from database
             * If `dict` is given: defines new `Material` having the `"coeffs"` and `"freqs"` specified in the
             dictionary.
 
@@ -191,34 +185,35 @@ class Environment:
         
         self.road_material = material
     
-    def set_simulation_params(self, interp_method: str, include_reflection: bool, include_air_absorption: bool) -> None:
+    def set_simulation_params(self, interp_method: str = 'Allpass', include_reflection: bool = True, 
+        include_air_absorption: bool = True) -> None:
         """
         Function used to define a set of parameters to be used in the simulation. These parameters are:
-        * The interpolation method used for the interpolated reads from the delay lines. `Sinc` provides more
-        accuracy but has a higher computational load.
+        * The interpolation method used for the interpolated reads from the delay lines. `Sinc` provides best
+        accuracy but has highest computational load.
         * The possibility to include the reflected sound path in the simulation. If it is not included, the source is
         assumed to emit sound in the free-field and just the direct path is simulated: this reduces the computational
-        load but requires a lower computational load.
+        load but also the physical accuracy
         * The possibility to include the air absorption in the simulation. The air absorption depends on distance and is
         implemented as a Time Varying FIR filter. The computation of its coefficients is performed at each simulation
-        instant, and implies an increase of the computational complexity. This can be neglected, leading to a decreased
-        simulation accuracy.
+        instant, and implies an increase of the computational complexity. This can be neglected, leading to a reduction in the
+        complexity but also in the simulation accuracy.
 
         Parameters
         ----------
         interp_method : str
             Interpolation method used to perform interpolated reads from the delay lines. Can be:
-            * `Linear`: linear interpolation, lowest computational complexity and accuracy
-            * `Lagrange`: Lagrange interpolation of order 5.
-            * `Sinc` (default): sinc interpolation using a windowed sinc filter with 11 taps. Highest accuracy and
+            * `Linear`: linear interpolation
+            * `Allpass` (default): first order allpass interpolation
+            * `Sinc`: sinc interpolation using a windowed sinc filter with 11 taps. Highest accuracy and
             computational complexity 
         include_reflection : bool
-            Bool, if `True` (default) the simulation includes the direct sound path and the path includind the road
+            Bool, if `True` (default) the simulation includes the direct sound path and the road
             surface reflection. If `False` just the direct sound is simulated.
         include_air_absorption : bool
             Bool, if `True` (default), the air absorption is included in the simulation. The air absorption is modeled 
             using a FIR filter with 11 taps, whose coefficients depend on the distance between source and receiver 
-            and thus are updated at each simulation instant. To reduce the computational load, can be neglected 
+            and thus are updated at each simulation instant. To reduce the computational load, this can be switched off 
             by setting this to `False`.
         """
         simulation_params = {
@@ -268,9 +263,6 @@ class Environment:
         is_static = False
         if trajectory_points is None:
             is_static = True
-            # Define duration of the simulation
-            # simulation_duration = 5
-            # trajectory = np.tile(position, (simulation_duration * self.fs))
             source = SoundSource(position, self.fs, is_static)
         else:
             source = SoundSource(position = position, fs = self.fs, is_static = False)
@@ -300,7 +292,7 @@ class Environment:
 
         self.source = source
     
-    def add_noise_source(self, position: np.ndarray, signal: np.ndarray = None) -> None:
+    def _add_noise_source(self, position: np.ndarray, signal: np.ndarray = None) -> None:
         """
         Creates a static noise signal and adds it to the acoustic scene in a specified position. Still
         to be implemented.
@@ -364,71 +356,9 @@ class Environment:
         
         self._background_noise = signal
 
-    # def _add_background_noise(self, signal: np.ndarray = None, SNR: float = 15) -> None:
-    #     """
-    #     Defines background noise signal to be added to the simulation. The background noise is assumed
-    #     to be of diffuse type, and is defined based on the SNR in dB scale between the noise signal and source 
-    #     signal, computed in the position along the trajectory closest to the first microphone of the microphone 
-    #     array.
-
-    #     Parameters
-    #     ----------
-    #     signal : np.ndarray
-    #         1D ndarray containing the samples of the background noise signal to be used during the simulation
-    #     SNR : float
-    #         Signal to Noise ratio in dB scale. The SNR is defined as the ratio between the source signal and the
-    #         noise signal, computed using the source signal received by the first microphone of the array when the
-    #         source is closest to it while travelling along its trajectory. Default SNR is 15 dB
-
-    #     Raises
-    #     ------
-    #     RuntimeError
-    #         If the source or the mic_array has not been instantiated yet
-        
-    #     Modifies
-    #     --------
-    #     background_noise:
-    #         The computed background noise signal samples are assigned to the corresponding attribute of the class
-
-    #     """
-    #     if self.source == None or self.mic_array == None:
-    #         raise RuntimeError("To add a background noise you need to first insert a sound source"
-    #             "and a microphone array")
-        
-    #     if signal is None:
-    #         # Define default signal --> white noise
-    #         simulation_duration = len(self.source.trajectory) / self.fs
-    #         t = np.arange(0, simulation_duration, 1 / self.fs)
-    #         signal = np.random.randn(len(t))
-        
-    #     else:
-    #         while(len(signal) < len(self.source.trajectory)):
-    #             signal = np.append(signal, signal)
-    #         if len(signal) > len(self.source.trajectory):
-    #             signal = signal[0:len(self.source.trajectory)]
-
-    #     # Find closest position between source and first microphone (reference)
-    #     d_min = float('inf')
-    #     if self.source.is_static:
-    #         d_min = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.position) ** 2))
-    #     else:
-    #         for i in range(len(self.source.trajectory)):
-    #             d_temp = np.sqrt(np.sum((self.mic_array.mic_positions[0] - self.source.trajectory[i]) ** 2))
-    #             if  d_temp < d_min:
-    #                 d_min = d_temp
-        
-    #     # Compute SNR
-    #     noise_attenuation = np.sqrt(np.sum((self.source.signal / (4 * np.pi * d_min))** 2) / (10 ** (SNR/10) 
-    #         * np.sum((signal) ** 2)))
-    #     signal = signal * noise_attenuation
-        
-    #     self.background_noise = signal
-
-
-    
     def add_microphone_array(self, mic_locs: np.ndarray) -> None:
         """
-        Creates a MicrophoneArray object and atts it to the Environment. The array is defined by the 
+        Creates a MicrophoneArray object and adds it to the Environment. The array is defined by the 
         position of its microphones.
 
         Parameters
@@ -468,13 +398,11 @@ class Environment:
         plt.title('Source and Microphones have height: z = %.2f' %self.mic_array.mic_positions[0,2])
         plt.show()
 
-    # Runs simulation. Returns array np.array([M,N]), where M is the number of microphones 
-    # and N is the number of samples of the simulation. Array contains signals recorded by microphones
     def simulate(self) -> np.ndarray:
         """
         Runs the simulation and returns received microphone signals. To be called, the `Environment` must be fully
         specified, i.e. it must contain a `SoundSource` and a `MicrophoneArray`. The function relies on the
-        `SimulatorManager`, an instance of a singleton class that contains the functions to compute the new
+        `SimulatorManager`, a class that contains the functions to compute the new
         simulator output samples (i.e. the signals received at the microphones) and to update the acoustic scene
         at each simulation frame.
 
@@ -531,17 +459,12 @@ class Environment:
     def _compute_air_absorption_coefficients(self, nbands: int = 20) -> np.ndarray:
         """
         Computes air absorption coefficients at a set of nbands equispaced frequencies in the range `[0, fs]`, based
-        on the ISO 9613-1 standard. 
-
-        A different formulation can be found in 
-        `Keith Attenborough, "Sound Propagation in the Atmosphere", Springer Handbook of Acoustics`, and can be set
-        by using T01 = 293.15
-        The coefficients depend on the atmsopsheric temperature, pressure and relative humidity.
+        on the ISO 9613-1 standard. The coefficients depend on the atmsopsheric temperature, pressure and relative humidity.
 
         Parameters
         ----------
         nbands: int
-            Number of frequency bands in which to compute air absorption coefficients, by default 50
+            Number of frequency bands in which to compute air absorption coefficients, by default 20
 
         Returns
         -------
@@ -581,7 +504,7 @@ class Environment:
     def _compute_air_impedance(self, T: float, p: float = 1, c: float = None) -> float:
         """
         Compute Specific impedance of air, given temperature (in Celsius) and pressure (in atm). Speed of 
-        sound can be given as a parameter, if None it is computed from temperature parameter.
+        sound can be given as a parameter; if None it is computed from temperature parameter.
 
         Parameters
         ----------

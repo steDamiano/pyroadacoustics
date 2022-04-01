@@ -9,30 +9,30 @@ class DelayLine:
     distance between the read pointer and the write pointer is a function of time.
 
     In order to take into account a smooth change in the delay length M, the read operation must rely
-    on an interpolation in case the position of the read pointer falls between two samples of the delay
+    on an interpolation, whenever the position of the read pointer falls between two samples of the delay
     line (i.e. M is a non-integer number, and the delay is thus fractional). Different interpolation
-    methods (linear, Lagrange, sinc) result in different levels of accuracy.
+    methods (linear, allpass, sinc) result in different levels of accuracy.
 
     The variable length Delay Line can be used to simulate sound propagation if the delay varies according
     to the physical laws governing sound propagation.
 
     The delay line is represented by a circular `ndarray` of N samples, with a single write pointer performing
-    write operations (one write per sampling interval), and an arbitrary number of read_pointers performing
-    interpolated read operations (one operation per sampling interval per each pointer).
+    write operations (one write per sampling interval), and an arbitrary number of read pointers performing
+    interpolated read operations (one operation per sampling interval for each pointer).
 
     Attributes
     ----------
     N: int
         Number of samples (i.e. entries) of the array defining the delay line
-    delay_line: ndarray
+    delay_line: np.ndarray
         Circular array of N samples (i.e. entries) defining the delay line
     write_ptr: int
         Position of the write pointer that performs write operations on the delay line. Value must be in `[0, N-1]`
-    read_ptr: float or ndarray
+    read_ptr: float or np.ndarray
         Position of read pointers that perform read operations on the delay line. Each pointer value must be in
-        `[0, N-1]`, and can take float values (interpolated reads operations are performed)
+        `[0, N-1]`, and can take float values (interpolated read operations are performed)
     interpolation: str
-        Interpolation method to be used for fractional delay reads. Can be 'Linear', 'Lagrange' or 'Sinc'
+        Interpolation method to be used for fractional delay reads. Can be 'Linear', 'Allpass' or 'Sinc'
     
 
     Methods
@@ -41,7 +41,7 @@ class DelayLine:
         Set initial read pointers position, as specified by the `delay` parameter (delay in number of samples)
     update_delay_line(x, delay):
         Writes signal value x on the delay line at the write_ptr position and increments write_ptr by 1.
-        Performs interpolated read operation for each of the write pointers, and updates read pointer values
+        Performs interpolated read operation for each of the write pointers, and updates read pointers values
         based on the delay parameter (delay in number of samples)
 
     Notes
@@ -59,8 +59,7 @@ class DelayLine:
             interpolation = 'Allpass',
         ):
         """
-        Creates a Delay Line object as a `ndarray` of N samples, with one write pointer, M read pointers and
-        a sampling frequency.
+        Creates a Delay Line object as a `ndarray` of N samples, with one write pointer and M read pointers.
 
         Parameters
         ----------
@@ -72,7 +71,6 @@ class DelayLine:
         interpolation : str, optional
             String describing the type of interpolator to be used for fractional delay read operations. Can be:
             * Linear: linear interpolation
-            * Lagrange: Lagrange interpolation with order 5
             * Sinc: sinc interpolation with filter length of 11 taps
             * Allpass: first order all pass interpolator
             
@@ -85,7 +83,7 @@ class DelayLine:
         ValueError:
             If `num_read_ptrs` <= 0
         ValueError:
-            If `interpolation` is neither Linear, nor Sinc, nor Lagrange
+            If `interpolation` is neither Linear, nor Sinc, nor Allpass
         """
 
         if N <= 0:
@@ -94,7 +92,7 @@ class DelayLine:
             raise ValueError("Number of read pointers must be greater than zero.")
         if (interpolation != 'Linear' and interpolation != "Lagrange" and
             interpolation != 'Allpass' and interpolation != "Sinc"):
-            raise ValueError("Interpolation parameter can be: `Linear`, `Lagrange`, `Allpass` or `Sinc`")
+            raise ValueError("Interpolation parameter can be: `Linear`, `Allpass` or `Sinc`")
 
         self.N = N
         self.write_ptr = 0
@@ -120,11 +118,11 @@ class DelayLine:
 
     def set_delays(self, delay: np.ndarray) -> None:
         """
-        Sets initial delays between the write pointer and each of the read pointers in the delay line.
+        Sets initial delays between the write pointer and each of the read pointers.
 
         Parameters
         ----------
-        delay : np.array(dtype = float)
+        delay : np.ndarray
             1D Array with number of elements equal to number of read pointers of the delay line. Each entry 
             is the delay in number of samples between the write pointer and each of read pointers, and can
             take non-integer positive values.
@@ -156,8 +154,8 @@ class DelayLine:
     def update_delay_line(self, x: float, delay: np.ndarray) -> np.ndarray:
         """
         Writes signal value x on the delay line at the write_ptr position and increments write_ptr by 1.
-        Performs interpolated read operation for each of the write pointers, and updates read pointer values
-        based on the delay parameter (delay in number of samples).
+        Performs an interpolated read operation for each of the read pointers, and updates read pointer values
+        based on the corresponding delay parameter (delay in number of samples).
 
         Parameters
         ----------
@@ -171,13 +169,12 @@ class DelayLine:
         Returns
         -------
         np.ndarray
-            1D Array containing 1 interpolated read sample per each of the read pointers of the delay line. These 
+            1D Array containing 1 interpolated sample per each of the read pointers of the delay line. These 
             values represent the output of the delay line (i.e. a delayed version of the input signal, interpolated
             to take into account fractional values of the delay)
         """
         
         # Create array to store output values
-        # y = np.zeros_like(self.read_ptr)
         y = np.zeros(len(self.read_ptr))
         
 
@@ -206,9 +203,9 @@ class DelayLine:
 
     def _interpolated_read(self, read_ptr_integer: int, d: float, method: str = 'Allpass', rptr_idx: int = 0) -> float:
         """
-        Produce interpolated read from delay line. Read pointer position is given to this function as an
+        Performs interpolated reads from delay line. Read pointer position is given to this function splitted into an
         integer part (`read_ptr_integer`) and a fractional part (`d`) in [0,1]. The interpolation is 
-        operated considering neighbouring samples of the signal on the delay line and using the method
+        performed considering neighbouring samples of the signal on the delay line and using the method
         specified in the `method` parameter.
         
         Parameters
@@ -218,7 +215,7 @@ class DelayLine:
         d : float
             Fractional part of the delay, in the interval [0,1]
         method : str, optional
-            Interpolation method used, by default 'Linear'. Can be:
+            Interpolation method used, by default 'Allpass'. Can be:
             * Linear: linear interpolation, uses 2 neighbouring samples
             * Lagrange: Lagrange polynomial interpolation, order 5 can be changed in this function. Implemented
             using an FIR filter
@@ -265,11 +262,7 @@ class DelayLine:
 
         elif method == 'Sinc':
             # Define windowed sinc filter paramters and compute coefficients
-            # sinc_samples = 11
-            # sinc_window = np.hanning(sinc_samples)
-            # h_sinc = self._frac_delay_sinc(self._SINC_SMP, self._WINDOW, d)
             h_sinc = self._frac_delay_interpolated_sinc(d)
-            # TODO: Implement sinc lookup with linear interpolation to speed up computations
             
             # Convolve signal with filter
             out = 0
@@ -313,23 +306,23 @@ class DelayLine:
     def _frac_delay_interpolated_sinc(self, delay: float) -> np.ndarray:
         """
         Computes windowed sinc FIR filter coefficients for sinc interpolation, using a table lookup and linear
-        interpolation. In the initialization of the `DelayLine` component, a sinc table is computed, and contains
-        the samples of windowed sinc filters to interpolate a predefined set of fractional delays between 0 and 1,
+        interpolation. In the initialization of the `DelayLine` component, a sinc table is computed, containing
+        the samples of windowed sinc filters corresponding to a predefined set of fractional delays between 0 and 1,
         with a step size equal to `self._delta`. 
 
         Given the fractional part of the delay `delay`, this functions retrieves the two sinc arrays corresponding to 
-        the nearest available delay points, and performs a linear interpolation to retrieve the windowed sinc samples
-        that correspond to the delay `delay`.
+        the nearest available delay points, and performs a linear interpolation to compute the windowed sinc samples
+        corresponding to the delay `delay`.
 
         Parameters
         ----------
         delay : float
-            _description_
+            Fractional part of the delay, in [0,1]
 
         Returns
         -------
         np.ndarray
-            _description_
+            Windowed-sinc filter coefficients corresponding to the delay `delay`
         """
         alpha = delay % self._delta
         position = np.searchsorted(self._table_delays, delay - alpha)

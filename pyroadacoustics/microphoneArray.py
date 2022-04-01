@@ -2,19 +2,16 @@ import numpy as np
 class MicrophoneArray:
     """
     A class that represents a microphone array. The array is defined by its number of microphones
-    and the positions of those microphones
-
-    In the future, the class will be extended to include microphone directivity patterns and 
-    internal noise.
+    and their positions
 
     Attributes
     ----------
     nmics: int
         number of microphones in the array
-    mic_positions: ndarray
+    mic_positions: np.ndarray
         2D array having dimensions `[nmics, 3]`, containing the `[x,y,z]` cartesian coordinates
         of each microphone in the array
-    signals: ndarray
+    signals: np.ndarray
         2D array containing the `nimcs` signals acquired by each microphone in the array
     """
 
@@ -23,11 +20,11 @@ class MicrophoneArray:
             mic_positions,
         ) -> None:
         """
-        Create microphone array object by defining the positions of the microphones that build the array
+        Create microphone array object by defining the positions of the microphones contained the array
 
         Parameters
         ----------
-        mic_positions: ndarray
+        mic_positions: np.ndarray
             2D array having dimensions `[nmics, 3]`, containing the `[x,y,z]` cartesian coordinates
             of each microphone in the array
 

@@ -18,7 +18,7 @@ class Material:
     ----------
     absorption: dict
         A dictionary containing keys ``description``, ``coeffs`` and ``center_freqs``
-    reflection_coeffs: ndarray
+    reflection_coeffs: np.ndarray
         An array containing the reflection coefficients of the material in each frequency 
         band defined in the `absorption["center_freqs"]` attribute. Reflection coefficients
         are computed as:
@@ -30,7 +30,7 @@ class Material:
     extrapolate_coeffs_to_spectrum(interp_degree = 2, fs = 8000, n_bands = 8):
         Extrapolate absorption coefficients to fill the frequency spectrum from 0 to fs/2
     plot_absorption_coeffs():
-        Plot the absorption coefficients along the frequency bands considered in the analysis
+        Plot the absorption coefficients in the frequency bands considered in the analysis
     """
     
     def __init__(
@@ -79,12 +79,12 @@ class Material:
         self.absorption = absorption
         self.reflection_coeffs = np.sqrt(1 - np.array(self.absorption["coeffs"]))
     
-    def extrapolate_coeffs_to_spectrum(self, interp_degree = 2, fs = 8000, n_bands = 8) -> np.array:
+    def extrapolate_coeffs_to_spectrum(self, interp_degree: int = 2, fs: int = 8000, n_bands: int = 8) -> np.ndarray:
         """
         Extrapolate absorption coefficients to fill the frequency spectrum from 0 to fs/2.
         The extrapolation is operated via fitting a polynomial of degree interp_degree to
         the set of absorption coefficients obtained from the database or measured, usually 
-        covering a subset of (low) frequencies of the spectrum. 
+        covering a subset of (low) frequencies of the full spectrum. 
         
         Returns a vector of n_bands absorption coefficients. The coefficients correspond to
         frequency bands, with center frequencies equispaced in the range [0, fs/2].
@@ -102,7 +102,7 @@ class Material:
 
         Returns
         -------
-        estimated_abs_coeffs: ndarray
+        estimated_abs_coeffs: np.ndarray
             Array with n_bands entries, containing absorption coefficients for frequency range [0, fs/2] Hz
         
         Modifies
@@ -146,6 +146,10 @@ class Material:
         return estimated_abs_coeffs
 
     def plot_absorption_coeffs(self) -> None:
+        '''
+        Plot the frequency values of the absorption coefficients of the material.
+        '''
+
         plt.figure()
         plt.plot(self.absorption["center_freqs"], self.absorption["coeffs"])
         plt.title('Absorption Coefficients Road Surface')
