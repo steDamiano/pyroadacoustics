@@ -91,8 +91,8 @@ class Environment:
     def __init__(
             self,
             fs: int = 8000,
-            source: SoundSource = None,
-            mic_array: MicrophoneArray = None,
+            # source: SoundSource = None,
+            # mic_array: MicrophoneArray = None,
             temperature: float = 20,
             pressure: float = 1,
             rel_humidity: int = 50,
@@ -135,8 +135,8 @@ class Environment:
         """
 
         self.fs = fs
-        self.source = source
-        self.mic_array = mic_array
+        self.source = None
+        self.mic_array = None
         self.temperature = temperature
         self.pressure = pressure
         if rel_humidity < 0 or rel_humidity > 100:
@@ -250,7 +250,7 @@ class Environment:
             * 2D Array containing N-1 floats defining the modulus of the velocity on each trajectory segment
             * float defining the modulus of the velocity on the whole trajectory (i.e. constant speed)
 
-            If source is moving, it must be assigned. If source is static, it takes default value 1
+            If source is moving, it must be assigned. If source is static, it takes default value `None`
 
         Raises
         ------
