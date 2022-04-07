@@ -48,3 +48,5 @@ The 4 demos were run with different sound source signals:
 3. `demo3`: white noise signal, with direct sound field and reflection from the ground.
 4. `demo4`: European ambulance siren sound, with direct sound field and reflection from the ground.
 
+## Acknowledgements
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme under the Marie Skłodowska-Curie grant agreement No. 956962 (I-SPOT Project).
