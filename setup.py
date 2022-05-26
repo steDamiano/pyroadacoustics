@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/steDamiano/pyroadacoustics",
     classifiers=[
-        "Development Status :: 4-Beta",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "Intended Audience :: Information Technology",
         "Topic :: Scientific/Engineering :: Information Analysis",
@@ -25,6 +25,9 @@ setuptools.setup(
     ],
     packages = ["pyroadacoustics"],
     python_requires=">=3.7",
+    package_data= {
+        "" : ['*.json']
+    },
     install_requires=[
         "numpy",
         "scipy>=0.18.0",

@@ -316,7 +316,7 @@ class SimulatorManager:
             y_secondary = self.secondaryDelLine.update_delay_line(sample_eval, np.array([tau_2 * self.fs]))
 
             # Store output of secondary delay line in buffer for cascade air abs filter
-            self._read4Buf.appendleft(y_secondary)
+            self._read4Buf.appendleft(y_secondary[0])
 
             # 4. From Road Surface to Receiver
             if self.simulation_params["include_air_absorption"]:
