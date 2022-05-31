@@ -143,7 +143,7 @@ class SimulatorManager:
             interpolation = self.simulation_params["interp_method"])
 
         # Array containing all possible incidence angles for pre-computed reflection filter table
-        self._theta_vector = np.arange(-89,89,1)
+        self._theta_vector = np.arange(-89,90,1)
 
         # Instantiation of table containing asphalt reflection filters
         self.asphaltReflectionFilterTable = self._compute_angle_reflection_table(ntaps = 11)
