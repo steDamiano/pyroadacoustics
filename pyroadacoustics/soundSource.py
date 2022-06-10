@@ -92,9 +92,9 @@ class SoundSource:
         positions : np.ndarray
             2D Array containing N sets of 3 cartesian coordinates `[x,y,z]` defining the desired trajectory positions.
             Each couple of subsequent points defines a straight segment on the overall trajectory
-        speed : np.ndarray or float
+        speed : np.ndarray
             * 2D Array containing N-1 floats defining the modulus of the velocity on each trajectory segment
-            * float defining the modulus of the velocity on the whole trajectory (i.e. constant speed)
+            * 1D Array containing one float, defining the modulus of the velocity on the whole trajectory (i.e. constant speed)
 
         Returns
         -------
@@ -121,35 +121,75 @@ class SoundSource:
         trajectory = np.empty((0,3), dtype = np.float64)
         if len(speed) != (np.shape(positions)[0] - 1):
             if(len(speed) != 1):
-                raise ValueError('Speed must be a float or an array with len(speed) = np.shape(positions)[0] - 1!')
-            else:
+                raise ValueError('Speed must be an array with len(speed) = np.shape(positions)[0] - 1 or len(speed) == 1!')
+            # else:
                 # Tile the speed value to cover the whole set of segments
                 # speed = speed * np.ones(np.shape(positions)[0], 1)
-                speed = np.tile(speed, np.shape(positions)[0] - 1)
+                # speed = np.tile(speed, np.shape(positions)[0] - 1)
         if 0 in speed:
             raise ValueError("Speed cannot be zero")
-        
-        for i in range(1, np.shape(positions)[0]):
-            # Extremes of the considered segment
-            a = positions[i - 1]
-            b = positions[i]
+        if len(speed) == 1:
+            cum_lengths = np.zeros(len(positions) + 1)
 
-            # Direction defining segment passing for a and b
-            direction = b - a
-            direction = direction / np.linalg.norm(direction)
+            len_traj = 0
+            b_seg = positions[0]
+            
 
-            len_segment = np.sqrt(np.sum((a-b)**2))         # Compute length of segment A,B
-            t_segment = len_segment / speed[i-1]            # Time to go from A to B (seconds)
-            samples_segment = round(t_segment * self.fs)    # Number of samples to go from A to B
+            for i in range(0, len(positions)):
+                e_seg = positions[i]
+                len_traj += np.sqrt((e_seg[0] - b_seg[0])**2 + (e_seg[1] - b_seg[1])**2)
+                cum_lengths[i] = len_traj
+                b_seg = e_seg
+            
+            cum_lengths[-1] = 2 * len_traj
+            sim_time = len_traj / speed[0]
 
-            # Positions on segment at each sample
-            segment_positions = len_segment / samples_segment * range(samples_segment)
-            # segment_positions = np.append(segment_positions, 1).reshape(-1,1)
-            segment_positions = segment_positions.reshape(-1,1)
-           
-            segment_positions = np.tile(a,(len(segment_positions), 1)) + segment_positions * direction
-            trajectory = np.append(trajectory, segment_positions, axis = 0)
-        
+            num_points = int(sim_time * self.fs - 1)
+            # trajectory = np.zeros((num_points,3))
+
+            curr = 0
+            next = 1
+
+            for i in range(0, num_points):
+                z = len_traj * i / num_points
+
+                while(z > cum_lengths[next]):
+                    curr += 1
+                    next += 1
+                if np.allclose(positions[curr], positions[next]):
+                    curr += 1
+                    next += 1
+                
+                b_seg = positions[curr]
+                e_seg = positions[next]
+
+                t = (z - cum_lengths[curr]) / (cum_lengths[next] - cum_lengths[curr])
+
+                trajectory = np.append(trajectory, np.array([[(b_seg[0] * (1 - t) + e_seg[0] * t), b_seg[1] * (1 - t) + e_seg[1] * t, 1]]), axis = 0)
+
+            # res[-1] = (seg_line[-1])
+        else:
+            for i in range(1, np.shape(positions)[0]):
+                # Extremes of the considered segment
+                a = positions[i - 1]
+                b = positions[i]
+
+                # Direction defining segment passing for a and b
+                direction = b - a
+                direction = direction / np.linalg.norm(direction)
+
+                len_segment = np.sqrt(np.sum((a-b)**2))         # Compute length of segment A,B
+                t_segment = len_segment / speed[i-1]            # Time to go from A to B (seconds)
+                samples_segment = round(t_segment * self.fs)    # Number of samples to go from A to B
+
+                # Positions on segment at each sample
+                segment_positions = len_segment / samples_segment * range(samples_segment)
+                # segment_positions = np.append(segment_positions, 1).reshape(-1,1)
+                segment_positions = segment_positions.reshape(-1,1)
+            
+                segment_positions = np.tile(a,(len(segment_positions), 1)) + segment_positions * direction
+                trajectory = np.append(trajectory, segment_positions, axis = 0)
+            
         trajectory = np.append(trajectory, np.reshape(positions[-1], (1,3)), axis = 0)
         self.trajectory = trajectory
 
