@@ -52,7 +52,7 @@ The 4 demos were run with different sound source signals:
 4. `demo4`: European ambulance siren sound, with direct sound field and reflection from the ground.
 
 ## Academic Publication
-If you use this package or part of this code in your own research, please cite the following paper:
+If you use this package or part of this code in your own research, please cite the [following paper](https://limo.libis.be/primo-explore/fulldisplay?docid=LIRIAS3774307&context=L&vid=Lirias&search_scope=Lirias&tab=default_tab&fromSitemap=1):
 > S. Damiano and T. van Waterschoot. “Pyroadacoustics: a Road Acoustics Simulator Based On Variable Length Delay Lines”, in *Proceedings of the 25th International Conference on Digital Audio Effects (DAFx22)*, Vienna, Austria, Spet. 2022 (accepted for publication).
 
 ## Acknowledgements
