@@ -91,7 +91,7 @@ class SimulatorManagerTest(unittest.TestCase):
         # FIRLS Method
         alpha = manager.airAbsorptionCoefficients
         alpha_lin = 10 ** (-2 * alpha / 20)
-        airabs2 = scipy.signal.firls(11, manager.norm_freqs, alpha_lin)
+        airabs2 = scipy.signal.firwin2(11, np.linspace(0,1,20), alpha_lin)
         self.assertTrue(np.linalg.norm(airabs - airabs2) < 0.01)
 
     

@@ -125,7 +125,7 @@ class EnvironmentTest(unittest.TestCase):
         
         self.assertEqual(env._background_noise_SNR, 10)
         self.assertEqual(env._background_noise_flag, True)
-        self.assertTrue(np.array_equiv(env._background_noise[0:len(noise_sig)], noise_sig))
+        self.assertTrue(np.array_equiv(env._background_noise, noise_sig[0:len(src_signal)]))
 
     def test_plot(self):
         env = Environment()

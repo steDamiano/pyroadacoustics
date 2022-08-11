@@ -263,7 +263,11 @@ class Environment:
         is_static = False
         if trajectory_points is None:
             is_static = True
-            source = SoundSource(position, self.fs, is_static)
+
+            if signal is not None:
+                source = SoundSource(position,self.fs,is_static,static_simduration=len(signal)/self.fs)
+            else:
+                source = SoundSource(position, self.fs, is_static)
         else:
             source = SoundSource(position = position, fs = self.fs, is_static = False)
             source.set_trajectory(trajectory_points, source_velocity)
