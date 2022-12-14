@@ -251,6 +251,8 @@ class Environment:
         ------
         RuntimeError:
             If a source is already present in the acoustic scene (self.source != None)
+        RuntimeError:
+            If the trajectory or position of the source contain the height z = 0
         
         Modifies
         --------
@@ -261,6 +263,8 @@ class Environment:
         if self.source is not None:
             raise RuntimeError("Cannot insert more than one sound source")
         is_static = False
+        if position[2] <=1e-5 or trajectory_points[:,2].any() <=1e-5:
+            raise RuntimeError('The source should always have a height greater than 0')
         if trajectory_points is None:
             is_static = True
 

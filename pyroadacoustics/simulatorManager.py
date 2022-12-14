@@ -419,7 +419,12 @@ class SimulatorManager:
             1D Array containing asphalt reflection filter coefficients computed at angle theta
         """
 
+        if round(theta) == 90:
+            theta = 89
+        if round(theta) == -90:
+            theta = -89
         idx = np.where(self._theta_vector == round(theta))
+        
         idx = idx[0][0]
         return self.asphaltReflectionFilterTable[idx]
 
