@@ -263,7 +263,7 @@ class Environment:
         if self.source is not None:
             raise RuntimeError("Cannot insert more than one sound source")
         is_static = False
-        if position[2] <=1e-5 or trajectory_points[:,2].any() <=1e-5:
+        if position[2] <=1e-5:
             raise RuntimeError('The source should always have a height greater than 0')
         if trajectory_points is None:
             is_static = True
@@ -275,6 +275,8 @@ class Environment:
         else:
             source = SoundSource(position = position, fs = self.fs, is_static = False)
             source.set_trajectory(trajectory_points, source_velocity)
+            if source.trajectory[:,2].any() <=1e-5:
+                raise RuntimeError('The source should always have a height greater than 0')
 
         if signal is None:
             # Define a default signal --> sinusoidal siren
