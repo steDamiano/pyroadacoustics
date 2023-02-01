@@ -1,3 +1,8 @@
+
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7593822.svg)](https://doi.org/10.5281/zenodo.7593822)
+
+
 # pyroadacoustics
 Pyroadacoustics is an open-source library that enables to simulate the sound propagation in a road scenario. The Python, entirely developed in Python, is built on a geometrical acoustics model to resemble the main acoustic phenomena that affect the sound produced by sources moving on a road, in a realistic outdoor environment.
 
