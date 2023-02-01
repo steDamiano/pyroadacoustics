@@ -44,12 +44,11 @@ The directory `audio_demos` contains the audio files of  a set of simulations pe
 - Sound source moving on a straight trajectory starting at position [3,20,1] m and ending at position [3,-20,1] m, with constant speed v = 5m /s
 - No background noise
 
-The 4 demos were run with different sound source signals:
+The 3 demos were run with different sound source signals:
 
 1. `demo1`: sinusoid with frequency F = 2000 Hz, without reflection from the ground (i.e. only direct sound field is simulated).
 2. `demo2`: sinusoid with frequency F = 2000 Hz, with direct sound field and reflection from the ground.
 3. `demo3`: white noise signal, with direct sound field and reflection from the ground.
-4. `demo4`: European ambulance siren sound, with direct sound field and reflection from the ground.
 
 ## Academic Publication
 If you use this package or part of this code in your own research, please cite the [following paper](https://limo.libis.be/primo-explore/fulldisplay?docid=LIRIAS3774307&context=L&vid=Lirias&search_scope=Lirias&tab=default_tab&fromSitemap=1):
