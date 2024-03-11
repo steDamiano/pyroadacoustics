@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 import scipy.signal
 import unittest
 import os, sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pyroadacoustics.material import Material
 from pyroadacoustics.environment import Environment
 from pyroadacoustics.simulatorManager import SimulatorManager
 
@@ -59,11 +61,11 @@ class SimulatorManagerTest(unittest.TestCase):
     def test_angle_reflection_table(self):
         src_pos = np.array([0., 0., 1.])
         mic_pos = np.array([[0,2,1]])
-        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
+        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50, road_material=Material('average_asphalt'))
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
-        table = manager._compute_angle_reflection_table(11)
+        table = manager._precompute_real_angle_reflection_filter_table(11)
         self.assertTrue(np.allclose(np.array([2.04541068e-04, 6.54709799e-04, 1.95861242e-03, 5.61281019e-03,
        4.46539850e-03, 9.33648475e-01, 4.46539850e-03, 5.61281019e-03,
        1.95861242e-03, 6.54709799e-04, 2.04541068e-04]), table[89]))
@@ -72,12 +74,12 @@ class SimulatorManagerTest(unittest.TestCase):
     def test_get_reflection_filter(self):
         src_pos = np.array([0., 0., 1.])
         mic_pos = np.array([[0,2,1]])
-        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50)
+        env = Environment(fs = 8000, temperature=20, pressure=1, rel_humidity=50, road_material=Material('average_asphalt'))
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
-        table = manager.asphaltReflectionFilterTable
-        self.assertTrue(np.allclose(manager._get_asphalt_reflection_filter(0), table[89]))
+        table = manager.realAsphaltReflectionFilterTable
+        self.assertTrue(np.allclose(manager._get_asphalt_reflection_filter(0,10), table[89]))
     
     def test_air_absorption_filter(self):
         src_pos = np.array([0., 0., 1.])
@@ -122,7 +124,7 @@ class SimulatorManagerTest(unittest.TestCase):
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
         manager = SimulatorManager(env.c, env.fs, env.Z0, env.road_material, env.air_absorption_coefficients)
-        manager.initialize(src_pos, mic_pos[0])
+        manager.initialize(env.source.trajectory, mic_pos[0], env.mic_array.mic_orientations[0,0],env.mic_array.dir_pattern[0],env.source.src_orientation,env.source.dir_pattern)
 
         self.assertAlmostEqual(manager.primaryDelLine.read_ptr[0], 48000 - 2 / env.c * env.fs)
         self.assertAlmostEqual(manager.primaryDelLine.read_ptr[1], 48000 - np.sqrt(2) / env.c * env.fs)
@@ -179,7 +181,7 @@ class SimulatorManagerTest(unittest.TestCase):
 
         env.add_source(position=src_pos)
         env.add_microphone_array(mic_pos)
-        manager.initialize(src_pos, mic_pos[0])
+        manager.initialize(env.source.trajectory, mic_pos[0], env.mic_array.mic_orientations[0,0],env.mic_array.dir_pattern[0],env.source.src_orientation,env.source.dir_pattern)
         import time
         start_time = time.time()
         import cProfile
@@ -198,3 +200,5 @@ if __name__ == '__main__':
     import cProfile
     # cProfile.run('unittest.main()')
     unittest.main()
+    # tst = SimulatorManagerTest()
+    # tst.test_initialize()

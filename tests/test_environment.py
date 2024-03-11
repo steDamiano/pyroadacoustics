@@ -11,7 +11,7 @@ from pyroadacoustics.environment import Environment
 class EnvironmentTest(unittest.TestCase):
     def test_instantiate(self):
         # Normal instantiation
-        env = Environment()
+        env = Environment(road_material=Material('average_asphalt'))
         self.assertTrue(env.road_material.absorption["description"], "Average asphalt model, see Notebook for details")
         self.assertEqual(env.source, None)
         self.assertEqual(env.mic_array, None)
@@ -120,7 +120,7 @@ class EnvironmentTest(unittest.TestCase):
         env = Environment()
         src_signal = np.ones(1000)
         env.add_microphone_array(np.array([[0,0,0]]))
-        env.add_source(position = np.array([0, 3, 0]), signal = src_signal)
+        env.add_source(position = np.array([0, 3, 1]), signal = src_signal)
         env.set_background_noise(noise_sig, SNR = 10)
         
         self.assertEqual(env._background_noise_SNR, 10)
@@ -130,7 +130,7 @@ class EnvironmentTest(unittest.TestCase):
     def test_plot(self):
         env = Environment()
         env.add_microphone_array(np.array([[0.,0.,0.],[0.,0.5,0.],[0.,1.,0]]))
-        env.add_source(position = np.array([3, 5, 0]), trajectory_points = np.array([[3,5,0], [3,-5,0], [0,-5,0]]), 
+        env.add_source(position = np.array([3, 5, 1]), trajectory_points = np.array([[3,5,1], [3,-5,1], [0,-5,1]]), 
             source_velocity = np.array([5, 2]))
         # env.plot_environment()
     
@@ -158,5 +158,8 @@ class EnvironmentTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('unittest.main()')
+    # import cProfile
+    # cProfile.run('unittest.main()')
+    unittest.main()
+    # tst = EnvironmentTest()
+    # tst.test_instantiate()
