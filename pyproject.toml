@@ -28,6 +28,7 @@ dependencies = [
     "wheel", 
     'numpy',
     'scipy>=0.18.0',
+    'matplotlib'
 ]
 keywords=["outdoor acoustics", "automotive", "signal processing", "traffic sound simulation"]
 
