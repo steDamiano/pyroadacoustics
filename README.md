@@ -28,10 +28,6 @@ You can install the package using pip:
 
     pip install pyroadacoustics
 
-As an alternative, you can download the repository to a local directory, and run
-
-    python setup.py install
-
 
 ## Documentation and Examples
 The documentation of all the classes and methods of the package is available in the corresponding docstring. 

@@ -1,9 +1,44 @@
 [build-system]
 # Minimum requirements for the build system to execute.
-requires = [
-    "setuptools>=42", 
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyroadacoustics"
+version = "1.1.0"
+authors=[
+    {name = "Stefano Damiano", email="stefano.damiano@esat.kuleuven.be"}
+]
+description="A package for simulating the sound propagation in a road scenario"
+readme= {file="README.md", content-type = "text/markdown"}
+license = { file = "LICENSE" }
+classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Science/Research",
+        "Intended Audience :: Information Technology",
+        "Topic :: Scientific/Engineering :: Information Analysis",
+        "Topic :: Scientific/Engineering :: Physics",
+        "Topic :: Multimedia :: Sound/Audio :: Analysis",
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Operating System :: OS Independent",
+]
+requires-python = ">=3.9"
+dependencies = [
     "wheel", 
     'numpy',
-    'scipy',
+    'scipy>=0.18.0',
 ]
-build-backend = "setuptools.build_meta"
+keywords=["outdoor acoustics", "automotive", "signal processing", "traffic sound simulation"]
+
+[project.urls]
+Repository = "https://github.com/steDamiano/pyroadacoustics"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include =["pyroadacoustics"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json"]

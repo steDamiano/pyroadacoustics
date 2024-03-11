@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from typing import List, Union
 
 from .material import Material
 from .soundSource import SoundSource
@@ -28,7 +29,7 @@ class Environment:
     Alongside these parameters, simulation attributes are also defined:
     * The sampling frequency
     * The air absorption coefficients
-    * The asphalt reflection coefficients
+    * The asphalt reflection coefficients or flow resistance
 
     From this class the simulation can be set up and run, via the instantiation of a SimulatorManager that
     contains the core functions of the simulator.
@@ -45,14 +46,14 @@ class Environment:
         1D Array containing the samples of the background noise signal. The 
         background noise is assumed to be of diffuse type
     mic_array: MicrophoneArray
-        Object containing the parameters of the microphone array (number and position of microphones)
+        Object containing the parameters of the microphone array (number, position and orientation of microphones, directivity pattern)
     temperature: float
         Atmospheric temperature expressed in `Celsius` degrees
     pressure: float
         Atmospheric pressure expressed in `atm`
     rel_humidity: int
         Relative Humidity expressed as a percentage. Takes values between 0 and 100
-    road_material: Material
+    road_material: Material or int
         Object containing information about the absorption and reflection properties of the road surface
     air_absorption_coefficients: np.ndarray
         1D Array containing the air absorption coefficients computed at a set of 50 equispaced frequencies
@@ -71,16 +72,14 @@ class Environment:
         * `interp_method`: interpolation method used to perform interpolated reads from delay line
         * `include_reflection`: if `False` only direct sound is simulated, if `True` also reflected path is included
         * `include_air_absorption`: if `True` effect of air absorption is included, if `False` it is neglected
-    add_source(position, signal = None, trajectory = None):
-        Creates a `SoundSource` by defining its initial position, its signal and (if it is a moving source) its
-        trajectory, and inserts it into the acoustic scene
+    add_source(position, dir_pattern = 'omnidirectional', signal = None, trajectory = None):
+        Creates a `SoundSource` by defining its initial position, its directivity, its signal and (if it is a moving source) its trajectory, and inserts it into the acoustic scene
     set_background_noise(signal, SNR):
         Generates a background noise signal to be added to the signals generated at the microphone positions during
         the simulation. The noise level is defined by setting its SNR with respect to the source signal received by
         the microphone after the simulation is complete
-    add_microphone_array(mic_locs):
-        Creates a `MicrophoneArray` object by defining the positions of its microphones, and inserts it into the
-        acoustic scene
+    add_microphone_array(mic_locs, mic_orientations, dir_pattern):
+        Creates a `MicrophoneArray` object by defining the position, orientation and directivity pattern of its microphones, and inserts it into the acoustic scene
     plot_environment():
         Plots the position of the microphones in the `MicrophoneArray` object and the trajectory of the `SoundSource`
     simulate():
@@ -94,7 +93,7 @@ class Environment:
             temperature: float = 20,
             pressure: float = 1,
             rel_humidity: int = 50,
-            road_material: Material = Material('average_asphalt'),
+            road_material: Union[Material, int] = 20000,
 
         ) -> None:
         """
@@ -105,7 +104,7 @@ class Environment:
                 * Temperature
                 * Pressure
                 * Relative Humidity
-        * a `Material` object describing the absorption and reflection properties of the road surface
+        * a `Material` object or flow resistivity value (int) describing the absorption and reflection properties of the road surface
         * a sampling frequency `fs` used in the simulations
 
         Parameters
@@ -118,9 +117,10 @@ class Environment:
             Atmospheric pressure in `atm`, by default 1 atm
         rel_humidity : int, optional
             Relative Humidity expressed as a percentage. Takes values in [0, 100], by default 50
-        road_material : Material, optional
-            Material object containing absorption and reflection properties of road surface, by default None. If 
-            is None, an average asphalt material is chosen from Database.
+        road_material : Material or int, optional
+            * Material object containing absorption and reflection properties of road surface.  If is None, 
+                an average asphalt material is chosen from Database.
+            * int indicating the flow-resistance of the desired asphalt surface (defalut: 20000)
         
         Raises
         ------
@@ -137,8 +137,12 @@ class Environment:
             raise ValueError("Humidity must be greater than zero and lower than 100")
         self.rel_humidity = rel_humidity
         
-        if road_material.absorption["center_freqs"][-1] != self.fs / 2:
-            road_material.extrapolate_coeffs_to_spectrum(fs = self.fs)
+        if isinstance(road_material, Material):
+            if road_material.absorption["center_freqs"][-1] != self.fs / 2:
+                road_material.extrapolate_coeffs_to_spectrum(fs = self.fs)
+        if isinstance(road_material, int):
+            if road_material <=0:
+                raise ValueError('Flow resistance parameter must be positive')
         self.road_material = road_material
 
         simulation_params: dict = {
@@ -157,7 +161,7 @@ class Environment:
         self._background_noise_SNR = 0
         self._background_noise = None
     
-    def set_road_material(self, absorption: str or dict) -> None:
+    def set_road_material(self, absorption: Union[str, dict]) -> None:
         """
         Set the road material by creating a new Material object from the absorption parameter. This parameter
         can either be a str containing a material name(the material will be chosen from the database based on 
@@ -224,7 +228,7 @@ class Environment:
         self.simulation_params = simulation_params
     
     def add_source(self, position: np.ndarray, signal: np.ndarray = None, 
-        trajectory_points: np.ndarray = None, source_velocity: np.ndarray or float = None) -> None:
+        trajectory_points: np.ndarray = None, source_velocity: Union[np.ndarray, float] = None, dir_pattern: str = 'omnidirectional', src_orientation: float = 0) -> None:
         """
         Creates a sound source and adds it to the environment. To create the `SoundSource` object, 
         the specified parameters are required
@@ -233,6 +237,10 @@ class Environment:
         ----------
         position : np.ndarray
             Initial source position, specified as a 1D array containing three cartesian coordinates [x,y,z]
+        dir_pattern: str
+            Directivity pattern of the source (omnidirectional, subcardioid, cardioid, supercardioid, hypercardioid, figure 8)
+        src_orientation: float
+            Angle (in degrees) towards which the directivity pattern of the source is oriented
         signal : np.ndarray, optional
             Signal emitted by the sound source, by default None. If the signal is None, a default frequency 
             modulated sinusoidal signal is assigned to the source. The signal is looped to cover the whole 
@@ -253,7 +261,7 @@ class Environment:
             If a source is already present in the acoustic scene (self.source != None)
         RuntimeError:
             If the trajectory or position of the source contain the height z = 0
-        
+
         Modifies
         --------
         source
@@ -265,15 +273,15 @@ class Environment:
         is_static = False
         if position[2] <=1e-5:
             raise RuntimeError('The source should always have a height greater than 0')
-        if trajectory_points is None:
+        if trajectory_points is None or len(trajectory_points) == 1:
             is_static = True
 
             if signal is not None:
-                source = SoundSource(position,self.fs,is_static,static_simduration=len(signal)/self.fs)
+                source = SoundSource(position, dir_pattern, src_orientation, self.fs,is_static,static_simduration=len(signal)/self.fs)
             else:
-                source = SoundSource(position, self.fs, is_static)
+                source = SoundSource(position, dir_pattern, src_orientation, self.fs, is_static)
         else:
-            source = SoundSource(position = position, fs = self.fs, is_static = False)
+            source = SoundSource(position = position, dir_pattern=dir_pattern, orientation=src_orientation, fs = self.fs, is_static = False)
             source.set_trajectory(trajectory_points, source_velocity)
             if source.trajectory[:,2].any() <=1e-5:
                 raise RuntimeError('The source should always have a height greater than 0')
@@ -281,7 +289,7 @@ class Environment:
         if signal is None:
             # Define a default signal --> sinusoidal siren
             simulation_duration = len(source.trajectory) / self.fs
-            
+
             ## Define sinusoid with frequency modulation
             f = 800
             f_lfo = 0.3
@@ -296,7 +304,7 @@ class Environment:
             signal = np.append(signal, signal)
         if len(signal) > len(source.trajectory):
             signal = signal[0:len(source.trajectory)]
-        
+
         # Add signal to the sound source
         source.set_signal(signal)
 
@@ -366,7 +374,7 @@ class Environment:
         
         self._background_noise = signal
 
-    def add_microphone_array(self, mic_locs: np.ndarray) -> None:
+    def add_microphone_array(self, mic_locs: np.ndarray, mic_orientations: np.ndarray = None, dir_pattern: List[str] = 'omnidirectional') -> None:
         """
         Creates a MicrophoneArray object and adds it to the Environment. The array is defined by the 
         position of its microphones.
@@ -376,6 +384,13 @@ class Environment:
         mic_locs : np.ndarray
             2D Array containing N triplets of cartesian coordinates [x,y,z] defining the position of the 
             microphones of the array
+        mic_orientations : np.ndarray or None
+            1D Array containing one angular value, in degrees, per each microphone, expressing is orientation. The
+            orientation is referred to the positive x axis (i. e. 0 degrees corresponds to a mic oriented towards the positive x axis)
+            Default: None (corresponds to 0 degrees)
+        dir_pattern:
+            str or list of strings, defining the directivity pattern of each microphone. If a single string is passed, all microphones 
+            have the same pattern. Supported patterns: omnidirectional, subcardioid, cardioid, supercardioid, hypercardioid, figure8
         
         Raises
         ------
@@ -389,7 +404,7 @@ class Environment:
         """
         if self.mic_array != None:
             raise RuntimeError("Cannot insert more than one microphone array")
-        mic_array = MicrophoneArray(mic_locs)
+        mic_array = MicrophoneArray(mic_locs, mic_orientations, dir_pattern)
         self.mic_array = mic_array
 
     def plot_environment(self):
@@ -439,18 +454,20 @@ class Environment:
 
         for m in range(M):
             # Select Active Microphone
-            active_mic = self.mic_array.mic_positions[m]
+            active_mic_pos = self.mic_array.mic_positions[m]
+            active_mic_orient = self.mic_array.mic_orientations[m]
+            active_dir_pattern = self.mic_array.dir_pattern[m]
         
             # Instantiate Simulator Manager
             manager = SimulatorManager(c = self.c, fs = self.fs, Z0 = self.Z0, road_material = self.road_material,
                 airAbsorptionCoefficients = self.air_absorption_coefficients, simulation_params = self.simulation_params)
 
             # Define simulation loop
-            manager.initialize(self.source.position, active_mic)
+            manager.initialize(self.source.trajectory, active_mic_pos, active_mic_orient, active_dir_pattern, self.source.src_orientation, self.source.dir_pattern)
 
             # Compute output samples
             for n in range(N):
-                signals[m,n] = manager.update(self.source.trajectory[n], active_mic, self.source.signal[n])
+                signals[m,n] = manager.update(self.source.trajectory[n], active_mic_pos, self.source.signal[n])
             
 
             # Add background noise

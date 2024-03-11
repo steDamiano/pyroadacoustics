@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal
 import math
 from collections import deque
+from typing import Tuple, Union
 
 from .delayLine import DelayLine
 from .material import Material
@@ -78,10 +79,10 @@ class SimulatorManager:
 
     def __init__(
             self,
-            c: float,                       # speed of sound in air 
-            fs: int,                        # sampling frequency
-            Z0: int,                        # characteristic impedance of air
-            road_material: Material,        # Absorption properties of road surface
+            c: float,                                   # speed of sound in air 
+            fs: int,                                    # sampling frequency
+            Z0: int,                                    # characteristic impedance of air
+            road_material: Union[Material, int],        # Absorption properties of road surface
             airAbsorptionCoefficients: np.ndarray,
             simulation_params: dict = {
                 "interp_method": "Sinc",
@@ -111,8 +112,9 @@ class SimulatorManager:
             Sampling frequency used in the simulation
         Z0: float
             Characteristic impedance of the air at the chosen environmental conditions (i.e. T, p)
-        road_material: Material
-            Material object defining the absorption and reflection properties of the road surface
+        road_material: Material or int 
+            * Material object defining the absorption and reflection properties of the road surface
+            * int defining the flow resistance of the road surface
         airAbsorptionCoefficients: np.ndarray
             1D Array containing the air absorption coefficients computed in the defined frequency bands at the chosen 
             environmental conditions (i.e. T, p, rel. humidity)
@@ -145,33 +147,48 @@ class SimulatorManager:
         # Array containing all possible incidence angles for pre-computed reflection filter table
         self._theta_vector = np.arange(-89,90,1)
 
-        # Instantiation of table containing asphalt reflection filters
-        self.asphaltReflectionFilterTable = self._compute_angle_reflection_table(ntaps = 11)
+        if isinstance(road_material, int):
+            n_taps_refl = 40    
+            self.f_tmp = np.linspace(0.001,self.fs/2,512)
+            self.sigma = road_material
+            self.Z = 1 + 9.08 * ((1000.0 * self.f_tmp)/self.sigma)**(-0.75) - 11.9 * 1j * ((1000.0 * self.f_tmp)/self.sigma) ** (-0.73)
+            self.w_tmp, self.Rp = self._precompute_complex_angle_reflection_filter_table()
+        if isinstance(road_material, Material):
+            # Instantiation of table containing asphalt reflection filters
+            n_taps_refl = 11
+            self.realAsphaltReflectionFilterTable = self._precompute_real_angle_reflection_filter_table(ntaps = n_taps_refl)
+        
+        # Instantiation of table containing source directivity filters - cars
+        self.directivity_filter_table_road_tire, self.delta_L_road_tire = self._compute_directivity_filter_table_road_tire(11)
+        self.directivity_filter_table_engine, self.delta_L_engine = self._compute_directivity_filter_table_engine()
+        
+        self._readBufDir1 = deque(np.zeros(11), maxlen=11)
+        self._readBufDir2 = deque(np.zeros(11), maxlen=11)
+
        
         # Buffers to store previous data read from delay lines for filtering purpose
         self._read1Buf = deque(np.zeros(11), maxlen=11)
         self._read2Buf = deque(np.zeros(11), maxlen=11)
-        self._read3Buf = deque(np.zeros(11), maxlen=11)
+        self._read3Buf = deque(np.zeros(n_taps_refl), maxlen=n_taps_refl)
         self._read4Buf = deque(np.zeros(11), maxlen=11)
 
         # Compute air absorption filter 
         freqs = np.linspace(0, self.fs / 2, len(airAbsorptionCoefficients))
         w = 2 * np.pi * freqs / (fs / 2)
         
-        # Filter order
-        L = 10
+        # Filter order - air absorption
+        L_air = 10
 
         # Matrix A
-        A = np.zeros((len(w),int(L/2 + 1)))
+        A = np.zeros((len(w),int(L_air/2 + 1)))
         A[:,0] = 1
         for i in range(len(w)):
-            for j in range(1,int(L/2 + 1)):
+            for j in range(1,int(L_air/2 + 1)):
                 A[i,j] = 2 * math.cos(w[i] * j)
-        
         self._pseud_A = np.linalg.inv(A.T.dot(A)).dot(A.T)
         
 
-    def initialize(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> None:
+    def initialize(self, src_traj: np.ndarray, mic_pos: np.ndarray, mic_orientation: float, mic_dir_pattern: str, src_orientation: float, src_dir_pattern: str) -> None:
         """
         Computes the propagation delays along the paths:
         * Direct path from source initial position to microphone
@@ -184,29 +201,55 @@ class SimulatorManager:
 
         Parameters
         ----------
-        src_pos : np.ndarray
-            1D array containing the cartesian coordinates [x,y,z] denoting the initial position of the sound source
+        src_traj : np.ndarray
+            2D array containing the cartesian coordinates [x,y,z] of each point of the trajectory of the source
         mic_pos : np.ndarray
             1D array containing the cartesian coordinates [x,y,z] denoting the position of the microphone
+        mic_orientation: float
+            Orientation angle in degrees, referred to positive x axis (i.e. 0 degrees corresponds to microphone oriented along the positive x axis)
+        mic_dir_pattern: str
+            Directivity pattern of the microphone (can be omnidirectional, subcardioid, cardioid, supercardioid, hypercardioid, figure 8)
+        src_orientation: float
+            Float value expressing the orientation angle, in degrees, of the source w.r.t the movement direction, computed as the direction of the 
+            vector pointing from the initial position to the next trajectory point
+        src_dir_pattern: str
+            Directivity pattern of the source (can be omnidirectional, subcardioid, cardioid, supercardioid, hypercardioid, figure 8)
         """
 
+        # Define orientation vector (unit vector pointing towards the orientation direction of the microphone)
+        self.mic_orientation_vector = np.array([np.cos(np.deg2rad(mic_orientation)), np.sin(np.deg2rad(mic_orientation))])
+        self.src_orientation_angle = np.deg2rad(src_orientation)
+
+        # Define directivity pattern
+        self.mic_dir_pattern = mic_dir_pattern
+        self.src_dir_pattern = src_dir_pattern
+        
         # Compute direct distance and delay
-        _, tau = self._compute_delay(src_pos, mic_pos)
+        _, tau = self._compute_delay(src_traj[0,:], mic_pos)
         
         # Compute incidence angle
-        theta = self._compute_angle(src_pos, mic_pos)
+        theta = self._compute_angle(src_traj[0,:], mic_pos)
 
         # Compute distance and delay between src and reflection point
-        a = src_pos[2] / math.sin(theta)
+        a = src_traj[0,2] / math.sin(theta)
         tau_1 = a / self.c
         
         # Compute distance and delay between reflection point and microphone
-        b = src_pos[2] / math.sin(theta)
+        b = src_traj[0,2] / math.sin(theta)
         tau_2 = b / self.c
 
         # Set initial delays
         self.primaryDelLine.set_delays(np.array([tau * self.fs, tau_1 * self.fs]))
         self.secondaryDelLine.set_delays(np.array([tau_2 * self.fs]))
+
+        # Buffer to store previous source position for directivity estimation
+        if src_traj[1,0] == src_traj[0,0]:
+            # Static source
+            self.static_src = True
+        else:
+            self.static_src = False
+        self._prev_src_pos = np.array([src_traj[1,0] - 2 * (src_traj[1,0] - src_traj[0,0]), src_traj[1,1] - 2 * (src_traj[1,1] - src_traj[0,1]), src_traj[1,2]])
+        self._prev_src_dist, _ = self._compute_delay(self._prev_src_pos, mic_pos)
         
     def update(self, src_pos: np.ndarray, mic_pos: np.ndarray, signal_sample: float) -> float:
         """
@@ -255,6 +298,9 @@ class SimulatorManager:
         # Compute incidence angle
         theta = self._compute_angle(src_pos, mic_pos)
 
+        # Compute microphone directivity attentuation
+        mic_dir_factor = self._compute_mic_dir_factor(src_pos, mic_pos, d, self.mic_orientation_vector, self.mic_dir_pattern)
+
         # Compute distance and delay between src and reflection point
         a = src_pos[2] / math.sin(theta)
         tau_1 = a / self.c
@@ -262,6 +308,11 @@ class SimulatorManager:
         # Compute distance between reflection point and microphone
         b = mic_pos[2] / math.sin(theta)
         tau_2 = b / self.c
+
+        # Compute source directivity attenuation
+        if self.src_dir_pattern != 'road_tire' and self.src_dir_pattern != 'engine':
+            src_dir_factor = self._compute_src_dir_factor(d, mic_pos, src_pos, self.src_orientation_angle)
+            signal_sample = src_dir_factor * signal_sample
 
         # Update delays and get new sample reads
         y_primary = self.primaryDelLine.update_delay_line(signal_sample, np.array([tau * self.fs, 
@@ -281,6 +332,30 @@ class SimulatorManager:
         else:
             sample_eval = self._read1Buf[0]
         
+        if self.src_dir_pattern == 'road_tire' or self.src_dir_pattern == 'engine':
+            self._readBufDir1.appendleft(sample_eval)
+            if self.static_src:
+                phi = int(np.rad2deg(np.pi - np.arccos((src_pos[:2] - mic_pos[:2]) @ np.array([1,0]) / d)))
+            else:
+                # Compute modulus of vector from past src_pos to current src_pos (speed direction)
+                pos_variation_mod = math.sqrt(np.sum((src_pos - self._prev_src_pos) ** 2))
+                
+                # Compute angle between direction of source velocity and mic-to-src direction using cosine law
+                phi = int(np.rad2deg(np.arccos((self._prev_src_dist ** 2 + pos_variation_mod ** 2 - d ** 2) / (2 * self._prev_src_dist * pos_variation_mod))))
+            
+            psi = int(np.rad2deg(np.arcsin((mic_pos[2] - src_pos[2])/d)))
+            if self.src_dir_pattern == 'road_tire':
+                filt_coeffs = self.directivity_filter_table_road_tire[phi, psi]
+                delta_L = self.delta_L_road_tire[phi, psi]
+            
+                bpf_signal = filt_coeffs.dot(list(self._readBufDir1))
+
+                sample_eval = sample_eval - bpf_signal + bpf_signal * 10 ** (delta_L / 20)
+            else:
+                filt_coeffs = self.directivity_filter_table_engine[phi, psi]
+                delta_L = self.delta_L_engine[phi, psi]
+            
+                sample_eval = sample_eval * 10 ** (delta_L / 20)
         # Attenuation due to distance
         att = self._compute_sound_attenuation(d)
 
@@ -307,7 +382,7 @@ class SimulatorManager:
             self._read3Buf.appendleft(sample_eval)
 
             # 2. Asphalt Absorption
-            asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta))
+            asphalt_filter_coeffs = self._get_asphalt_reflection_filter(90 - math.degrees(theta), a+b)
             
             sample_eval = asphalt_filter_coeffs.dot(list(self._read3Buf))
             
@@ -326,6 +401,23 @@ class SimulatorManager:
             else:
                 sample_eval = self._read4Buf[0]
             
+            if self.src_dir_pattern == 'road_tire' or self.src_dir_pattern == 'engine':
+                self._readBufDir2.appendleft(sample_eval)
+
+                psi = int(np.rad2deg(np.arcsin((mic_pos[2])/b)))
+                if self.src_dir_pattern == 'road_tire':
+                    filt_coeffs = self.directivity_filter_table_road_tire[phi, psi]
+                    delta_L = self.delta_L_road_tire[phi, psi]
+            
+                    bpf_signal = filt_coeffs.dot(list(self._readBufDir2))
+
+                    sample_eval = sample_eval - bpf_signal + bpf_signal * 10 ** (delta_L / 20)
+                else:
+                    filt_coeffs = self.directivity_filter_table_engine[phi, psi]
+                    delta_L = self.delta_L_engine[phi, psi]
+                
+                    sample_eval = sample_eval * 10 ** (delta_L / 20)
+                
             # Attenuation due to distance
             att = self._compute_sound_attenuation(b)
 
@@ -334,7 +426,11 @@ class SimulatorManager:
             # Compute received sample as sum of direct and reflected path outputs
             y_received = y_refl
         
-        y_received = y_received + y_dir
+        y_received = mic_dir_factor * (y_received + y_dir)
+
+        # Update buffer for previous distance and position
+        self._prev_src_dist = d
+        self._prev_src_pos = src_pos
 
         return y_received
     
@@ -362,7 +458,7 @@ class SimulatorManager:
         
         return filt_coeffs
 
-    def _compute_angle_reflection_table(self, ntaps: int = 11) -> np.ndarray:
+    def _precompute_real_angle_reflection_filter_table(self, ntaps: int = 11) -> np.ndarray:
         """
         Computes the coefficients of the FIR filters modelling asphalt reflection, at a set of different
         incidence angles, and stores them in a table. Each row of the table contains the `ntaps` FIR filter 
@@ -401,32 +497,6 @@ class SimulatorManager:
                 / (self.fs/2), R)
         
         return b_fir
-    
-    def _get_asphalt_reflection_filter(self, theta: float) -> np.ndarray:
-        """
-        Select the asphalt reflection filter from the pre-computed table given the incidence angle of the 
-        sound wave hitting the road surface, in degrees. For the table lookup, the incidence angle is 
-        rounded to the closest integer in the range defined in `self._theta_vector` attribute.
-
-        Parameters
-        ----------
-        theta : float
-            Incidence angle of the sound wave hitting the road surface, in degrees
-
-        Returns
-        -------
-        np.ndarray
-            1D Array containing asphalt reflection filter coefficients computed at angle theta
-        """
-
-        if round(theta) == 90:
-            theta = 89
-        if round(theta) == -90:
-            theta = -89
-        idx = np.where(self._theta_vector == round(theta))
-        
-        idx = idx[0][0]
-        return self.asphaltReflectionFilterTable[idx]
 
     def _compute_sound_attenuation(self, distance: float) -> float:
         """
@@ -446,7 +516,7 @@ class SimulatorManager:
         """
         return 1 / (distance)
     
-    def _compute_delay(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> tuple[float, float]:
+    def _compute_delay(self, src_pos: np.ndarray, mic_pos: np.ndarray) -> Tuple[float, float]:
         """
         Computes the distance between the source and the microphone, and the time needed by the sound to travel 
         from source to microphone, given their distance and the speed of sound in air.
@@ -491,3 +561,148 @@ class SimulatorManager:
         # Incidence angle
         theta = math.asin((src_pos[2] + mic_pos[2]) / dist)
         return theta
+    
+    def _compute_mic_dir_factor(self, src_pos: np.ndarray, mic_pos: np.ndarray, distance: float, orientation: np.ndarray, dir_pattern: str) -> float:
+        '''
+        Computes the attenuation factor due to directivity, depending on the microphone directivity pattern 
+        and on the angle between the microphone orientation and the source
+        '''
+        # Retrieve angle on Horizontal axis, assume rotational invariance along vertical direction
+        if dir_pattern == 'omnidirectional':
+            dir_factor = 1
+        elif dir_pattern == 'subcardioid':
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ orientation / distance
+            dir_factor = 0.75 + 0.25 * cos_theta
+        elif dir_pattern == 'cardioid':
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ orientation / distance
+            dir_factor = 0.5 + 0.5 * cos_theta
+        elif dir_pattern == 'supercardioid':
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ orientation / distance
+            dir_factor = 1/3 + 2/3 * cos_theta
+        elif dir_pattern == 'hypercardioid':
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ orientation / distance
+            dir_factor = 0.25 + 0.75 * cos_theta
+        elif dir_pattern == 'figure8':
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ orientation / distance
+            dir_factor = cos_theta
+        return dir_factor
+    
+    def _compute_src_dir_factor(self, distance: float, mic_pos: np.ndarray, src_pos: np.ndarray, src_orientation: float) -> float:
+        
+        if self.src_dir_pattern == 'omnidirectional':
+            dir_factor = 1
+            return dir_factor
+        
+        if self.static_src:
+            pos_variation_mod = 1
+            cos_theta = (src_pos[:2] - mic_pos[:2]) @ np.array([1,0]) / distance
+            theta = np.pi - np.arccos(cos_theta)
+        # Compute modulus of vector from past src_pos to current src_pos (speed direction)
+        else:
+            pos_variation_mod = math.sqrt(np.sum((src_pos - self._prev_src_pos) ** 2))
+        
+            # Compute angle between direction of source velocity and mic-to-src direction using cosine law
+            cos_theta = ((self._prev_src_dist ** 2 + pos_variation_mod ** 2 - distance ** 2) / (2 * self._prev_src_dist * pos_variation_mod))
+            if abs(cos_theta) > 1:
+                cos_theta = np.sign(cos_theta)
+            
+            theta= np.arccos(cos_theta)
+            if ((src_pos[0] - self._prev_src_pos[0]) * (mic_pos[1] - self._prev_src_pos[1]) - (src_pos[1] - self._prev_src_pos[1]) * (mic_pos[0] - self._prev_src_pos[0]) < 0):
+                theta = - theta
+
+        # Add orientation angle to obtain actual orientation
+        theta += src_orientation
+
+        if self.src_dir_pattern == 'subcardioid':
+            dir_factor = 0.75 + 0.25 * cos_theta
+        elif self.src_dir_pattern == 'cardioid':
+            dir_factor = 0.5 + 0.5 * cos_theta
+        elif self.src_dir_pattern == 'supercardioid':
+            dir_factor = 1/3 + 2/3 * cos_theta
+        elif self.src_dir_pattern == 'hypercardioid':
+            dir_factor = 0.25 + 0.75 * cos_theta
+        elif self.src_dir_pattern == 'figure8':
+            dir_factor = cos_theta
+        return dir_factor
+    
+    def _compute_directivity_filter_table_road_tire(self, filt_taps: int = 11) -> Tuple[np.ndarray, np.ndarray]:
+        '''
+        Compute filters to implement vertical and horizontal directivity using FIR filters, in accordance to the equations
+        proposed in the Harmonoise/Nordic2000 model.
+        '''
+        phi = np.linspace(0, 180, 181)
+        psi = np.linspace(0, 90, 91)
+        filt_coeffs_table = np.zeros((len(phi), len(psi), filt_taps))
+        delta_L = np.zeros((len(phi), len(psi)))
+
+        if self.fs < 16000:
+            freq_bands = np.array([[0, 707], [707, self.fs/2]])
+            gains = np.array([[0,1], [1,1]])
+        else:
+            freq_bands = np.array([[0, 707],[707,7127], [7127, self.fs/2]])
+            gains =  np.array([[0,1], [1,1],[1,0]])
+
+        for i in range(len(phi)):
+            for j in range(len(psi)):
+                delta_L[i,j] = (-2.5 + 4 * np.abs(np.cos(math.radians(phi[i])))) * np.cos(math.radians(psi[j]))
+                filt_coeffs_table[i,j] = scipy.signal.firls(filt_taps, freq_bands, gains, fs=self.fs)
+
+        return filt_coeffs_table, delta_L
+    
+    def _compute_directivity_filter_table_engine(self) -> Tuple[np.ndarray, np.ndarray]:
+        '''
+        Compute filters to implement vertical and horizontal directivity using FIR filters, in accordance to the equations
+        proposed in the Harmonoise/Nordic2000 model.
+        '''
+        phi = np.linspace(0, 180, 181)
+        psi = np.linspace(0, 90, 91)
+        filt_coeffs_table = np.zeros((len(phi), len(psi)))
+        delta_L = np.zeros((len(phi), len(psi)))
+
+        for i in range(len(phi)):
+            for j in range(len(psi)):
+                delta_L[i,j] = (1.546 * (np.pi / 2 - math.radians(phi[i])) ** 3 
+                                - 1.425 * (np.pi / 2 - math.radians(phi[i])) ** 2 
+                                + 0.22*(np.pi/2 - math.radians(phi[i])) + 0.6) * np.sqrt(np.cos(math.radians(psi[j]))) 
+                
+        return filt_coeffs_table, delta_L
+
+    def _precompute_complex_angle_reflection_filter_table(self):
+        """
+        Precompute the complex ground reflection coefficients and store in table for faster simulation
+        """
+        w_tmp = np.zeros_like(self._theta_vector)
+        Rp = np.zeros_like(self._theta_vector)
+
+        for i in range(len(self._theta_vector)):
+            w_tmp = (1.0 + 1.0/self.Z * np.cos(math.radians(self._theta_vector[i])) - np.sqrt(1.0 - (1.0/self.Z) ** 2.0) * np.sin(math.radians(self._theta_vector[i])))
+            Rp = (self.Z * np.cos(math.radians(self._theta_vector[i])) - 1.0)/(self.Z * np.cos(math.radians(self._theta_vector[i])) + 1.0) 
+        return w_tmp, Rp
+
+    def _get_asphalt_reflection_filter(self, theta: float, dist: float):
+        if isinstance(self.road_material, int):
+            # Complex case
+            if np.abs(theta) >= 89:
+                idx = np.where(self._theta_vector == np.sign(theta) * 89)
+            else:
+                idx = np.where(self._theta_vector == round(theta))
+            idx = idx[0][0]
+            
+            w = np.sqrt(-1j * 2.0 * np.pi * self.f_tmp/343.0 * dist * self.w_tmp[idx])
+            F_w = 1.0 - 1j * np.sqrt(np.pi) * w * scipy.special.erfcx(1j * w)
+            Q = self.Rp + (1.0 - self.Rp) * F_w
+            q = np.fft.irfft(Q)
+            q = q[:40]
+            return q
+        
+        elif isinstance(self.road_material, Material):
+            # Real case
+            if round(theta) == 90:
+                theta = 89
+            if round(theta) == -90:
+                theta = -89
+            idx = np.where(self._theta_vector == round(theta))
+            
+            idx = idx[0][0]
+            
+            return self.realAsphaltReflectionFilterTable[idx]
